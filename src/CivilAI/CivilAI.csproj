@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <PlatformTarget>x64</PlatformTarget>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.1.0</Version>
+    <AutoCAD2026Dir Condition="'$(AutoCAD2026Dir)' == ''">C:\Program Files\Autodesk\AutoCAD 2026</AutoCAD2026Dir>
+    <Civil3D2026Dir Condition="'$(Civil3D2026Dir)' == ''">$(AutoCAD2026Dir)\C3D</Civil3D2026Dir>
+  </PropertyGroup>
+  <Import Project="../../Autodesk.local.props" Condition="Exists('../../Autodesk.local.props')" />
+  <ItemGroup>
+    <Reference Include="AcCoreMgd"><HintPath>$(AutoCAD2026Dir)/AcCoreMgd.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="AcDbMgd"><HintPath>$(AutoCAD2026Dir)/AcDbMgd.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="AcMgd"><HintPath>$(AutoCAD2026Dir)/AcMgd.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="AeccDbMgd"><HintPath>$(Civil3D2026Dir)/AeccDbMgd.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <Target Name="CheckAutodeskReferences" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(AutoCAD2026Dir)/AcCoreMgd.dll') Or !Exists('$(AutoCAD2026Dir)/AcDbMgd.dll') Or !Exists('$(AutoCAD2026Dir)/AcMgd.dll')" Text="AutoCAD 2026 references missing. Set AutoCAD2026Dir to your licensed installation/reference directory." />
+    <Error Condition="!Exists('$(Civil3D2026Dir)/AeccDbMgd.dll')" Text="Civil 3D 2026 references missing. Set Civil3D2026Dir to the directory containing AeccDbMgd.dll." />
+  </Target>
+</Project>

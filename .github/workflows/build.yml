@@ -1,0 +1,42 @@
+name: Windows build checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_with_autodesk:
+        description: Build on a licensed Civil 3D 2026 self-hosted runner
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  project-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Evaluate target and proprietary-reference policy (not compilation)
+        shell: pwsh
+        run: |
+          $project = 'src/CivilAI/CivilAI.csproj'
+          dotnet msbuild $project -getProperty:TargetFramework,UseWPF,PlatformTarget
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [xml]$xml = Get-Content $project
+          if ($xml.Project.PropertyGroup.TargetFramework -ne 'net8.0-windows') { throw 'Unexpected target' }
+          $references = @($xml.Project.ItemGroup.Reference)
+          if ($references.Count -ne 4) { throw 'Expected four Autodesk references' }
+          foreach ($reference in $references) {
+            if ($reference.Private -ne 'false') { throw 'Autodesk reference must not be copied' }
+          }
+  autodesk-build:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_with_autodesk
+    runs-on: [self-hosted, Windows, X64, civil3d-2026]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet build src/CivilAI/CivilAI.csproj --configuration Release
