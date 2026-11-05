@@ -5,4 +5,4 @@ public sealed record DrawingItem(string Kind, string Name, IReadOnlyList<Propert
 {
     public string Label => $"{Kind}: {Name}";
 }
-public sealed record DrawingSnapshot(string Drawing, IReadOnlyList<DrawingItem> Items, int Unavailable);
+public sealed record DrawingSnapshot(string Drawing, IReadOnlyList<DrawingItem> Items, int Unavailable, int Scanned, IReadOnlyList<string> Diagnostics);

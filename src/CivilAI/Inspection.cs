@@ -15,34 +15,60 @@ internal static class Inspection
         var items = new List<DrawingItem>();
         var seen = new HashSet<ObjectId>();
         var unavailable = 0;
+        var diagnostics = new List<string>();
+        void Report(string message)
+        {
+            if (diagnostics.Count < 100) diagnostics.Add(message);
+            else if (diagnostics.Count == 100) diagnostics.Add("Further diagnostics omitted (100-message limit).");
+        }
         using var transaction = document.Database.TransactionManager.StartOpenCloseTransaction();
         void Inspect(ObjectId id)
         {
-            if (!seen.Add(id) || id.IsErased) return;
+            if (!seen.Add(id)) return;
             try
             {
+                if (id.IsErased) return;
                 var value = transaction.GetObject(id, OpenMode.ForRead);
                 if (value is not TinSurface && value is not FeatureLine) return;
-                var properties = ReadProperties(value);
+                var properties = ReadProperties(value, Report);
                 var name = properties.FirstOrDefault(p => p.Name == "Name")?.Value ?? value.Handle.ToString();
                 items.Add(new DrawingItem(value is TinSurface ? "TIN surface" : "Feature line", name, properties));
             }
-            catch (Autodesk.AutoCAD.Runtime.Exception) { unavailable++; }
+            catch (Exception ex)
+            {
+                unavailable++;
+                Report($"Object {id}: {ex.GetType().Name}: {ex.Message}");
+            }
         }
         // Civil's surface collection includes surfaces independently of block ownership.
-        foreach (ObjectId id in CivilApplication.ActiveDocument.GetSurfaceIds()) Inspect(id);
+        try
+        {
+            // Resolve Civil context from this exact database, rather than a second global active-document lookup.
+            var civil = CivilDocument.GetCivilDocument(document.Database);
+            var surfaceIds = civil.GetSurfaceIds();
+            Report($"Civil surface collection: {surfaceIds.Count} surfaces (all types).");
+            foreach (ObjectId id in surfaceIds) Inspect(id);
+        }
+        catch (Exception ex)
+        {
+            Report($"Civil surface collection failed: {ex.GetType().Name}: {ex.Message}. Continuing local entity scan.");
+        }
         var blocks = (BlockTable)transaction.GetObject(document.Database.BlockTableId, OpenMode.ForRead);
         foreach (ObjectId blockId in blocks)
         {
-            var block = (BlockTableRecord)transaction.GetObject(blockId, OpenMode.ForRead);
-            if (block.IsFromExternalReference || block.IsFromOverlayReference) continue;
-            foreach (ObjectId id in block) Inspect(id);
+            try
+            {
+                var block = (BlockTableRecord)transaction.GetObject(blockId, OpenMode.ForRead);
+                if (block.IsFromExternalReference || block.IsFromOverlayReference) continue;
+                foreach (ObjectId id in block) Inspect(id);
+            }
+            catch (Exception ex) { Report($"Block {blockId}: {ex.GetType().Name}: {ex.Message}"); }
         }
         // Return detached strings only. No DBObject escapes the read transaction.
-        return new DrawingSnapshot(document.Name, items.OrderBy(i => i.Kind).ThenBy(i => i.Name).ToArray(), unavailable);
+        return new DrawingSnapshot(document.Name, items.OrderBy(i => i.Kind).ThenBy(i => i.Name).ToArray(), unavailable, seen.Count, diagnostics.ToArray());
     }
 
-    private static IReadOnlyList<PropertyValue> ReadProperties(DBObject value)
+    private static IReadOnlyList<PropertyValue> ReadProperties(DBObject value, Action<string> report)
     {
         var result = new List<PropertyValue>();
         foreach (var property in value.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public)
@@ -57,9 +83,12 @@ internal static class Inspection
                 var raw = property.GetValue(value);
                 result.Add(new PropertyValue(property.Name, Convert.ToString(raw, CultureInfo.InvariantCulture) ?? "(null)"));
             }
-            catch (Exception ex) when (ex is TargetInvocationException or Autodesk.AutoCAD.Runtime.Exception)
+            catch (Exception ex)
             {
-                result.Add(new PropertyValue(property.Name, "Unavailable in this drawing"));
+                var cause = ex.GetBaseException();
+                var message = $"{cause.GetType().Name}: {cause.Message}";
+                result.Add(new PropertyValue(property.Name, $"Unavailable: {message}"));
+                report($"{value.Handle}.{property.Name}: {message}");
             }
         }
         return result;
