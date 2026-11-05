@@ -23,3 +23,11 @@
 - Load the DLL in Civil 3D 2026 on Windows and perform the README acceptance checks: docking, native surfaces/feature lines, properties, drawing switching, refresh, and DBMOD preservation.
 
 The user confirmed the previous build loaded in Civil 3D 2026 and opened the palette, but reported that Refresh showed no visible results. This Linux investigation identified an unacknowledged command-text queue and hidden diagnostics, but cannot reproduce the in-host failure or establish its exact cause. **The corrected refresh path still requires a Civil 3D 2026 retest.** No Civil 3D process is available here.
+
+## Click-stage diagnostic revision
+
+Source inspection confirmed the button was connected, but its old handler invoked the Autodesk-facing delegate before any WPF-only acknowledgement. `BeginRefresh`, `Show`, `ShowError`, and context invalidation could replace the diagnostic history. Neither issue proves the cause of the user's in-host blank panel.
+
+The named Click handler now sets visible WPF text before invoking the delegate, yields at Background dispatcher priority to allow rendering, and retains timestamped inspection stages through completion/errors. Initial panel text includes assembly informational version for loaded-build identification. Command-context entry, document recheck/lock and read-only transaction behavior are preserved.
+
+The Windows smoke executable now verifies that a raised Click updates text before the callback executes, output controls have layout space, exceptions retain the initial trace, empty results and property selection update correctly. It is compiled locally and executed by Windows CI; Linux cannot execute WPF. The diagnostic revision requires Civil 3D retesting.

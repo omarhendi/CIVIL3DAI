@@ -10,7 +10,7 @@ namespace CivilAI;
 
 internal static class Inspection
 {
-    public static DrawingSnapshot Read(Document document)
+    public static DrawingSnapshot Read(Document document, Action<string> progress)
     {
         var items = new List<DrawingItem>();
         var seen = new HashSet<ObjectId>();
@@ -21,6 +21,7 @@ internal static class Inspection
             if (diagnostics.Count < 100) diagnostics.Add(message);
             else if (diagnostics.Count == 100) diagnostics.Add("Further diagnostics omitted (100-message limit).");
         }
+        progress("Starting open/close read transaction.");
         using var transaction = document.Database.TransactionManager.StartOpenCloseTransaction();
         void Inspect(ObjectId id)
         {
@@ -44,7 +45,9 @@ internal static class Inspection
         try
         {
             // Resolve Civil context from this exact database, rather than a second global active-document lookup.
+            progress("Resolving Civil document from the active database.");
             var civil = CivilDocument.GetCivilDocument(document.Database);
+            progress("Reading Civil surface IDs.");
             var surfaceIds = civil.GetSurfaceIds();
             Report($"Civil surface collection: {surfaceIds.Count} surfaces (all types).");
             foreach (ObjectId id in surfaceIds) Inspect(id);
@@ -53,6 +56,7 @@ internal static class Inspection
         {
             Report($"Civil surface collection failed: {ex.GetType().Name}: {ex.Message}. Continuing local entity scan.");
         }
+        progress("Scanning local block records for TIN surfaces and feature lines (ForRead). API errors will be listed below.");
         var blocks = (BlockTable)transaction.GetObject(document.Database.BlockTableId, OpenMode.ForRead);
         foreach (ObjectId blockId in blocks)
         {
@@ -64,6 +68,7 @@ internal static class Inspection
             }
             catch (Exception ex) { Report($"Block {blockId}: {ex.GetType().Name}: {ex.Message}"); }
         }
+        progress($"Scan finished: {items.Count} matching objects; {unavailable} failed reads. Creating detached property snapshot.");
         // Return detached strings only. No DBObject escapes the read transaction.
         return new DrawingSnapshot(document.Name, items.OrderBy(i => i.Kind).ThenBy(i => i.Name).ToArray(), unavailable, seen.Count, diagnostics.ToArray());
     }

@@ -29,7 +29,7 @@ public sealed class Plugin : IExtensionApplication
     }
 
     private static void DrawingChanged(object sender, DocumentCollectionEventArgs args) =>
-        panel?.Clear("Drawing context changed. Refresh to inspect the active drawing.");
+        panel?.InvalidateDrawing("Drawing context changed. Refresh to inspect the active drawing.");
 
     [CommandMethod("CIVILAI", CommandFlags.Modal)]
     public void Open()
@@ -57,12 +57,13 @@ public sealed class Plugin : IExtensionApplication
 
     private static async Task RequestRefreshAsync()
     {
-        if (refreshing) return;
+        if (refreshing) { panel!.Stage("A refresh is already pending; finish the active AutoCAD command and wait."); return; }
         refreshing = true;
         try
         {
+            panel!.Stage("Accessing AutoCAD DocumentManager.MdiActiveDocument.");
             var requested = Application.DocumentManager.MdiActiveDocument;
-            if (requested is null) { panel!.Clear("No drawing is active. Open a drawing and refresh."); return; }
+            if (requested is null) { panel!.InvalidateDrawing("No drawing is active. Open a drawing and refresh."); return; }
             panel!.BeginRefresh($"Waiting for AutoCAD command context: {requested.Name}");
             // Modeless palette callbacks must explicitly enter AutoCAD's command context.
             // Catch failures inside the callback: never let an exception escape into AutoCAD.
@@ -70,8 +71,9 @@ public sealed class Plugin : IExtensionApplication
             {
                 try
                 {
+                    panel!.Stage("Entered AutoCAD command context; rechecking active document.");
                     if (Application.DocumentManager.MdiActiveDocument != requested)
-                        panel!.Clear("The active drawing changed before inspection started. Refresh again.");
+                        panel!.InvalidateDrawing("The active drawing changed before inspection started. Refresh again.");
                     else
                         InspectActiveDrawing();
                 }
@@ -96,20 +98,28 @@ public sealed class Plugin : IExtensionApplication
 
     private static void InspectActiveDrawing()
     {
-        var document = Application.DocumentManager.MdiActiveDocument;
-        if (document is null) { panel!.Clear("No drawing is active. Open a drawing and refresh."); return; }
+        Document? document = null;
         try
         {
-            panel!.BeginRefresh($"Inspecting {document.Name}");
+            panel!.Stage("Accessing active document for inspection.");
+            document = Application.DocumentManager.MdiActiveDocument;
+            if (document is null) { panel.InvalidateDrawing("No drawing is active. Open a drawing and refresh."); return; }
+            panel.BeginRefresh($"Inspecting {document.Name}");
             DrawingSnapshot snapshot;
+            panel.Stage("Acquiring active document lock.");
             using (document.LockDocument())
-                snapshot = Inspection.Read(document);
+            {
+                panel.Stage("Document lock acquired; starting read-only inspection.");
+                snapshot = Inspection.Read(document, panel.Stage);
+            }
+            panel.Stage("Read transaction and document lock released; updating WPF results.");
             panel.Show(snapshot);
         }
         catch (System.Exception ex)
         {
             panel!.ShowError("Drawing inspection", ex);
-            document.Editor.WriteMessage($"\nCivil AI inspection failed: {ex}\n");
+            try { document?.Editor.WriteMessage($"\nCivil AI inspection failed: {ex}\n"); }
+            catch (System.Exception loggingError) { panel.Stage($"Command history logging also failed: {loggingError}"); }
         }
         finally { panel?.EndRefresh(); }
     }

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using CivilAI;
 
 internal static class Program
@@ -25,6 +26,7 @@ internal static class Program
             Console.WriteLine($"PASS: {message}");
         }
 
+        Check(status.Text.Contains("panel ready") && diagnostics.Text.Contains("Build"), "Panel initializes visible text and build identity without Autodesk APIs");
         panel.Show(new DrawingSnapshot("Empty.dwg", Array.Empty<DrawingItem>(), 0, 3, new[] { "Surface collection: 0" }));
         Check(status.Text.Contains("Empty.dwg") && status.Text.Contains("No native TIN"), "Empty drawings display their name and an explicit empty result");
         Check(properties.Items.Count == 5 && list.Items.Count == 0, "Drawing summary is visible without object selection");
@@ -42,8 +44,17 @@ internal static class Program
         Check(!button.IsEnabled && list.Items.Count == 0 && status.Text.Contains("Waiting"), "Pending refresh disables button and clears stale inventory");
         panel.EndRefresh();
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Check(calls == 0 && status.Text.Contains("Refresh clicked") && diagnostics.Text.Contains("Autodesk API has not been accessed yet"), "Click event writes diagnostics before invoking the API delegate");
+        panel.Measure(new Size(440, 650));
+        panel.Arrange(new Rect(0, 0, 440, 650));
+        panel.UpdateLayout();
+        Check(status.ActualHeight > 0 && diagnostics.ActualHeight > 0, "Output controls receive visible layout space");
+        var frame = new DispatcherFrame();
+        Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
         Check(calls == 1 && status.Text.Contains("Refresh probe failed") && diagnostics.Text.Contains("InvalidOperationException"), "Button callback exceptions are caught and displayed");
-        panel.Clear("No drawing is active.");
+        Check(diagnostics.Text.Contains("Refresh clicked"), "Exception output retains the click and stage trace");
+        panel.InvalidateDrawing("No drawing is active.");
         Check(properties.Items.Count == 0 && status.Text.Contains("No drawing"), "Drawing context changes clear stale properties");
     }
 }
