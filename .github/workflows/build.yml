@@ -1,42 +1,32 @@
-name: Windows build checks
+name: Build Civil AI
 on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      build_with_autodesk:
-        description: Build on a licensed Civil 3D 2026 self-hosted runner
-        type: boolean
-        default: false
 permissions:
   contents: read
 jobs:
-  project-check:
+  build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - name: Evaluate target and proprietary-reference policy (not compilation)
+      - name: Restore official Autodesk 2026 references
+        run: dotnet restore src/CivilAI/CivilAI.csproj --source https://api.nuget.org/v3/index.json
+      - name: Build .NET 8 Windows plugin
+        run: dotnet build src/CivilAI/CivilAI.csproj --configuration Release --no-restore
+      - name: Verify output contains no dependency DLLs
         shell: pwsh
         run: |
-          $project = 'src/CivilAI/CivilAI.csproj'
-          dotnet msbuild $project -getProperty:TargetFramework,UseWPF,PlatformTarget
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          [xml]$xml = Get-Content $project
-          if ($xml.Project.PropertyGroup.TargetFramework -ne 'net8.0-windows') { throw 'Unexpected target' }
-          $references = @($xml.Project.ItemGroup.Reference)
-          if ($references.Count -ne 4) { throw 'Expected four Autodesk references' }
-          foreach ($reference in $references) {
-            if ($reference.Private -ne 'false') { throw 'Autodesk reference must not be copied' }
-          }
-  autodesk-build:
-    if: github.event_name == 'workflow_dispatch' && inputs.build_with_autodesk
-    runs-on: [self-hosted, Windows, X64, civil3d-2026]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+          $output = 'src/CivilAI/bin/Release/net8.0-windows'
+          if (!(Test-Path "$output/CivilAI.dll")) { throw 'CivilAI.dll was not produced' }
+          $dependencies = @(Get-ChildItem $output -Recurse -Filter *.dll | Where-Object { $_.Name -ne 'CivilAI.dll' })
+          if ($dependencies.Count -gt 0) { throw "Unexpected dependency DLLs: $($dependencies.Name -join ', ')" }
+      - name: Upload CivilAI.dll only
+        uses: actions/upload-artifact@v4
         with:
-          dotnet-version: 8.0.x
-      - run: dotnet build src/CivilAI/CivilAI.csproj --configuration Release
+          name: CivilAI-0.1-${{ github.sha }}
+          path: src/CivilAI/bin/Release/net8.0-windows/CivilAI.dll
+          if-no-files-found: error

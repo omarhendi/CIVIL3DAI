@@ -1,20 +1,21 @@
-# Validation — 2026-11-05
+# Cloud-build validation — 2026-11-05
 
-The selected repository had no files, commits or remote branches when inspected. Implementation was created from scratch; there was no existing code to repair.
+## Executed
 
-## Executed in the Linux cloud environment
+- Built the complete updated project in Codex Cloud (Linux) with .NET SDK 8.0.427, Windows targeting enabled, and the official NuGet source `https://api.nuget.org/v3/index.json`.
+- Command: `dotnet build src/CivilAI/CivilAI.csproj -c Release --source https://api.nuget.org/v3/index.json`.
+- Result: **build succeeded, 0 errors, 2 warnings**. Both warnings are MSB3277 assembly version conflicts:
+  - `Microsoft.VisualBasic`: 10.0.0.0 vs 10.1.0.0; MSBuild selected primary 10.0.0.0.
+  - `System.Drawing`: 4.0.0.0 vs 8.0.0.0; MSBuild selected primary 4.0.0.0.
+- Warnings are not suppressed. They arise during reference resolution between framework references and Autodesk API dependencies; successful compilation does not establish their runtime impact.
+- Restored versions: AutoCAD.NET, AutoCAD.NET.Core, AutoCAD.NET.Model all 25.1.0; Civil3D.NET 13.8.280. No third-party Autodesk DLL packages or stubs were used.
+- CS0104 resolved with the explicit AutoCAD `DBObject` alias. CS0012 resolved by the explicit `AecBaseMgd` reference from Civil3D.NET.
+- Release output contains `CivilAI.dll`, `CivilAI.pdb`, and `CivilAI.deps.json`. No Autodesk DLLs or other dependency DLLs are copied. The workflow artifact includes **only CivilAI.dll**.
+- WPF interface, commands, read-only transactions, and inspection behavior were preserved. No additional features were added.
 
-- Installed .NET SDK 8.0.427 outside the repository using Microsoft's official installer, with TLS verification enabled.
-- `dotnet msbuild src/CivilAI/CivilAI.csproj -getProperty:TargetFramework,UseWPF,PlatformTarget`: passed; returned `net8.0-windows`, `true`, `x64`.
-- `dotnet build src/CivilAI/CivilAI.csproj -c Release`: restore succeeded; build failed at `CheckAutodeskReferences` with the explicit missing AutoCAD 2026 reference diagnostic. No complete plugin compilation took place.
-- Compiled the actual `InspectorPanel.cs` and `DrawingSnapshot.cs` as linked sources in a temporary WPF library outside the repository using the Windows targeting pack: passed, zero warnings and errors. This validates UI/model compilation only, not execution or Autodesk integration. No API stubs were used.
-- Parsed all four C# source files with the SDK's Roslyn C# 12 parser: no syntax errors. Syntax validation does not establish Autodesk API compatibility.
-- `git diff --check`: passed.
+## Still required
 
-## Not executed
+- The new GitHub-hosted Windows workflow must complete after push; the local Linux build is not evidence of a completed GitHub run. Consult Actions for its actual result and downloadable artifact.
+- Load the DLL in Civil 3D 2026 on Windows and perform the README acceptance checks: docking, native surfaces/feature lines, properties, drawing switching, refresh, and DBMOD preservation.
 
-- Compilation of `Plugin.cs` and `Inspection.cs` against actual Autodesk 2026 assemblies: unavailable in this environment.
-- Civil 3D runtime loading, docking, object enumeration, document switching and DBMOD checks: require Windows with Civil 3D 2026. Follow the acceptance checklist in README.md.
-- GitHub Actions execution: workflow authored but not run here. Hosted CI checks configuration; only the explicitly requested licensed self-hosted job compiles the plugin.
-
-The source implements the requested read-only milestone, but Autodesk API compatibility and in-host behavior remain unverified until these required checks are completed. No production readiness claim is made.
+**Runtime compatibility has not been tested or established.** No Civil 3D process is available in this Linux environment.

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using DBObject = Autodesk.AutoCAD.DatabaseServices.DBObject;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.Civil.ApplicationServices;

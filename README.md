@@ -2,33 +2,24 @@
 
 Native C#/.NET 8, x64 WPF plugin for Autodesk Civil 3D 2026. This first milestone is a read-only drawing inspector. No AI services, keys, telemetry or external data transmission are implemented.
 
-## Windows build
+## Build without a local development installation
 
-Install the .NET 8 SDK and a licensed Civil 3D 2026 installation. Use PowerShell from the repository root:
+GitHub Actions builds on a hosted Windows runner; no Autodesk application or development software is needed on your workstation to obtain the DLL. Open the repository's **Actions → Build Civil AI**, select a successful run for `civilai-v0.1`, and download the `CivilAI-0.1-<commit>` artifact. Extract `CivilAI.dll` for testing inside Civil 3D 2026.
+
+For a manual build on Windows or a Linux cloud machine with the .NET 8 SDK:
 
 ```powershell
-dotnet restore src/CivilAI/CivilAI.csproj
-dotnet build src/CivilAI/CivilAI.csproj -c Release --no-restore `
-  -p:AutoCAD2026Dir="C:\Program Files\Autodesk\AutoCAD 2026" `
-  -p:Civil3D2026Dir="C:\Program Files\Autodesk\AutoCAD 2026\C3D"
+dotnet restore src/CivilAI/CivilAI.csproj --source https://api.nuget.org/v3/index.json
+dotnet build src/CivilAI/CivilAI.csproj -c Release --no-restore
 ```
 
-Paths default to the directories above. Override them on the command line or create an ignored `Autodesk.local.props` at the repository root:
+The project targets `net8.0-windows`, WPF, and x64, with Windows cross-targeting enabled. It uses official Autodesk-owned NuGet packages pinned to exact versions: `AutoCAD.NET` **25.1.0** (including its Core and Model dependencies) and `Civil3D.NET` **13.8.280**, both for the **2026** products. The Civil references explicitly include `AeccDbMgd.dll` and `AecBaseMgd.dll` (the latter is spelled AecBaseMgd, not AeccBaseMgd).
 
-```xml
-<Project>
-  <PropertyGroup>
-    <AutoCAD2026Dir>D:\Autodesk\AutoCAD 2026</AutoCAD2026Dir>
-    <Civil3D2026Dir>D:\Autodesk\AutoCAD 2026\C3D</Civil3D2026Dir>
-  </PropertyGroup>
-</Project>
-```
-
-Required references: AcCoreMgd.dll, AcDbMgd.dll, AcMgd.dll and AeccDbMgd.dll from the **2026** installation. Keep their installation dependencies available to the compiler. Autodesk assemblies are proprietary: do not commit, package or redistribute them. References use `Private=false`. Compilation fails explicitly when the required references are missing. Do not substitute stubs and treat that as a successful Autodesk build.
+AutoCAD package assets are compile-only. Civil package DLL paths are resolved through NuGet's generated `PkgCivil3D_NET` property and referenced with `Private=false`; package runtime assets are excluded. No machine-specific Autodesk paths or local props file are needed. Autodesk supplies the runtime assemblies inside Civil 3D; do not distribute them with the plugin. CI rejects any dependency DLL in output and uploads only `CivilAI.dll`.
 
 ## Load and use
 
-1. Build on Windows and open Civil 3D 2026 (plain AutoCAD is insufficient).
+1. Download the CI artifact or build the DLL, then open Civil 3D 2026 (plain AutoCAD is insufficient).
 2. Add your build output directory to Civil 3D's trusted locations using its security settings; retain secure loading.
 3. Run `NETLOAD` and select `src/CivilAI/bin/Release/net8.0-windows/CivilAI.dll`.
 4. Run `CIVILAI`. Dock or float the palette. Select a surface or feature line to see scalar public properties.
@@ -40,11 +31,11 @@ All database objects are opened `ForRead` inside a read transaction; no write ac
 
 ## Validation
 
-A real build requires Autodesk's proprietary references. A Linux SDK can evaluate the project and report missing references, but cannot validate Civil 3D behavior. The initial cloud checkout was empty; no existing application or tests were present.
+The full plugin compiles in Linux cloud using official 2026 references. This does not validate Civil 3D behavior; in-host tests remain required. See `VALIDATION.md` for build warnings.
 
 Before accepting a release, perform these checks in Civil 3D 2026:
 
-- Build successfully against installed 2026 assemblies; verify no Autodesk DLLs appear in output.
+- Download or build the plugin against the pinned official 2026 references; verify no Autodesk DLLs appear in output.
 - In a drawing with a known TIN surface and both site-associated and siteless feature lines, verify inventory names, counts and property values against Civil 3D's UI.
 - Test an empty drawing, unavailable data references, and a drawing with xrefs; confirm no crash and the documented scope.
 - Switch between two drawings, close the active drawing, and refresh; confirm stale data clears and the new drawing is inspected.
@@ -55,7 +46,7 @@ These in-host checks have not been run in the cloud environment. See `VALIDATION
 
 ## CI
 
-The GitHub Actions workflow always checks project configuration on a Windows hosted runner. That check is **not a plugin compilation**. A manual dispatch can additionally request an actual build on an organization-managed runner labelled `self-hosted`, `Windows`, `X64`, `civil3d-2026`, with licensed 2026 references in the default paths (or environment variables `AutoCAD2026Dir` and `Civil3D2026Dir`). It runs only for manual dispatch; do not expose a licensed runner to untrusted pull requests. No proprietary references or build artifacts are uploaded.
+On push, pull request, or manual dispatch, `.github/workflows/build.yml` restores official packages, builds Release on `windows-latest`, rejects any DLL other than `CivilAI.dll` in output, and uploads only that file with `actions/upload-artifact`. No licensed self-hosted runner is needed for compilation. CI does not launch Civil 3D or establish runtime compatibility. The repository's Actions settings must permit workflows to run.
 
 ## Direction
 
