@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Reflection;
 using DBObject = Autodesk.AutoCAD.DatabaseServices.DBObject;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.ApplicationServices;
@@ -75,25 +73,36 @@ internal static class Inspection
 
     private static IReadOnlyList<PropertyValue> ReadProperties(DBObject value, Action<string> report)
     {
-        var result = new List<PropertyValue>();
-        foreach (var property in value.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public)
-                     .Where(p => p.CanRead && p.GetIndexParameters().Length == 0).OrderBy(p => p.Name))
+        var handle = value.Handle.ToString();
+        Action<string> log = message => report($"{handle}.{message}");
+        bool? isReference = null;
+        try { isReference = ((Autodesk.Civil.DatabaseServices.Entity)value).IsReferenceObject; }
+        catch (Exception ex) { log($"IsReferenceObject: {ex.GetBaseException()}"); }
+        var result = PropertyInspection.ReadScalars(value, isReference, log).ToList();
+        result.Insert(0, new PropertyValue("Type", value.GetType().FullName ?? value.GetType().Name));
+        if (value is TinSurface surface)
         {
-            var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-            // Scalar properties only: do not traverse geometry, collections or linked objects.
-            if (!(type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal)
-                  || type == typeof(ObjectId) || type == typeof(Handle))) continue;
+            // These methods return statistics only; never rebuild or change the surface.
             try
             {
-                var raw = property.GetValue(value);
-                result.Add(new PropertyValue(property.Name, Convert.ToString(raw, CultureInfo.InvariantCulture) ?? "(null)"));
+                var general = surface.GetGeneralProperties();
+                result.Add(PropertyInspection.ReadValue("MinimumElevation", () => general.MinimumElevation, log));
+                result.Add(PropertyInspection.ReadValue("MaximumElevation", () => general.MaximumElevation, log));
+                result.Add(PropertyInspection.ReadValue("MeanElevation", () => general.MeanElevation, log));
             }
             catch (Exception ex)
             {
-                var cause = ex.GetBaseException();
-                var message = $"{cause.GetType().Name}: {cause.Message}";
-                result.Add(new PropertyValue(property.Name, $"Unavailable: {message}"));
-                report($"{value.Handle}.{property.Name}: {message}");
+                result.Add(PropertyInspection.Failure("General surface statistics", ex, log));
+            }
+            try
+            {
+                var terrain = surface.GetTerrainProperties();
+                result.Add(PropertyInspection.ReadValue("SurfaceArea2D (drawing units squared)", () => terrain.SurfaceArea2D, log));
+                result.Add(PropertyInspection.ReadValue("SurfaceArea3D (drawing units squared)", () => terrain.SurfaceArea3D, log));
+            }
+            catch (Exception ex)
+            {
+                result.Add(PropertyInspection.Failure("Terrain surface statistics", ex, log));
             }
         }
         return result;

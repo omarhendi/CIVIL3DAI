@@ -31,3 +31,14 @@ Source inspection confirmed the button was connected, but its old handler invoke
 The named Click handler now sets visible WPF text before invoking the delegate, yields at Background dispatcher priority to allow rendering, and retains timestamped inspection stages through completion/errors. Initial panel text includes assembly informational version for loaded-build identification. Command-context entry, document recheck/lock and read-only transaction behavior are preserved.
 
 The Windows smoke executable now verifies that a raised Click updates text before the callback executes, output controls have layout space, exceptions retain the initial trace, empty results and property selection update correctly. It is compiled locally and executed by Windows CI; Linux cannot execute WPF. The diagnostic revision requires Civil 3D retesting.
+
+## Reference-property and surface-statistics correction
+
+The user confirmed native TIN detection but reported `IsReferencedSourceExisting` throwing on a native entity. Inspected the official Civil3D.NET 13.8.280 `AeccDbMgd.xml`: reference-validity, stale, source-existing and subobject flags require reference context. The partial-reference flag is conservatively gated too; reference/CWS classification flags remain readable. Non-scalar reference managers/operation collections remain excluded.
+
+The reader checks `IsReferenceObject` before optional reference properties, skips guarded getters for false/unknown status, and catches failures separately for each property. General surface statistics supply min/max/mean elevation; terrain statistics supply 2D/3D areas. Empty/unavailable statistics produce individual diagnostic rows without losing the surface or other properties. No rebuild or write API was added.
+
+- Full plugin build with official pinned packages: **0 errors, 2 existing MSB3277 warnings** (`Microsoft.VisualBasic` and `System.Drawing` version conflicts described above).
+- Executed cross-platform property smoke checks: **7 passed**, verifying all five reference-only getters are skipped for native/unknown objects, invoked on reference objects, normal properties survive a throwing getter, diagnostics are retained, and one statistics failure does not stop another read. These checks exercise the real property-reader helper using probe objects, not Autodesk runtime objects.
+- WPF smoke project still compiles; execution remains a Windows CI check.
+- Native and data-reference surface statistics and feature-line inspection must still be retested in Civil 3D 2026.

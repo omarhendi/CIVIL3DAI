@@ -17,6 +17,8 @@ jobs:
         run: dotnet restore src/CivilAI/CivilAI.csproj --source https://api.nuget.org/v3/index.json
       - name: Build .NET 8 Windows plugin
         run: dotnet build src/CivilAI/CivilAI.csproj --configuration Release --no-restore
+      - name: Validate reference-property guards and failure isolation
+        run: dotnet run --project tests/CivilAI.PropertySmoke/CivilAI.PropertySmoke.csproj --configuration Release
       - name: Validate WPF refresh states and bindings
         run: dotnet run --project tests/CivilAI.PanelSmoke/CivilAI.PanelSmoke.csproj --configuration Release
       - name: Verify output contains no dependency DLLs
