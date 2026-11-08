@@ -79,7 +79,11 @@ public sealed partial class Plugin
                 void Add(string name, AreaTotals t, double area)
                 {
                     var rows=t.Rows(area,low.Value,high.Value).ToList();
-                    if(skipped>0) rows.Insert(0,new("Data quality", $"{skipped} unusable triangles in surface scan; assessment is provisional, not a pass."));
+                    if(skipped>0)
+                    {
+                        rows[0] = new PropertyValue("Assessment", "INCOMPLETE — unusable surface data; no whole-area verdict.");
+                        rows.Insert(0,new("Data quality", $"{skipped} unusable triangles in surface scan; assessment is provisional, not a pass."));
+                    }
                     rows.Insert(0,new("Subdivision", $"{zones.Count} closed region(s) from boundary and selected breaklines. Dangling/open lines that do not close a region do not subdivide it. No automatic surface-breakline extraction or gap snapping."));
                     items.Add(new DrawingItem("Area assessment",name,rows));
                 }
@@ -97,3 +101,4 @@ public sealed partial class Plugin
         }
     }
 }
+
