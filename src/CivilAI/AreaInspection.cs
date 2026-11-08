@@ -44,6 +44,7 @@ public sealed partial class Plugin
                         if(feature.IsReferenceObject && (!feature.IsReferenceValid || feature.IsReferenceStale || !feature.IsReferencedSourceExisting)) throw new ArgumentException("Feature-line reference is invalid, stale or missing.");
                         closed=feature.Closed;
                         if(mustClose && !closed) throw new ArgumentException("The pavement boundary feature line must be closed.");
+                        if(feature.PIPointsCount<2 || feature.PIPointsCount>10000) throw new ArgumentException("Feature line requires 2–10,000 PI points.");
                         var pi=feature.GetPoints(Autodesk.Civil.FeatureLinePointType.PIPoint);
                         foreach(Autodesk.AutoCAD.Geometry.Point3d point in pi) points.Add(new(point.X,point.Y));
                         var sampled=PlanCurve.Read(points,closed,feature.GetBulge,chord.Value,out var length);
@@ -115,5 +116,6 @@ public sealed partial class Plugin
         }
     }
 }
+
 
 
