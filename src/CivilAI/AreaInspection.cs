@@ -19,13 +19,15 @@ public sealed partial class Plugin
             var surfaceOptions = new PromptEntityOptions("\nSelect pavement/floor TIN surface: ");
             surfaceOptions.SetRejectMessage("\nSelect a TIN surface."); surfaceOptions.AddAllowedClass(typeof(TinSurface),true);
             var surfacePick = ed.GetEntity(surfaceOptions); if (surfacePick.Status != PromptStatus.OK) return;
-            var boundaryPick = ed.GetEntity("\nSelect closed pavement boundary (straight 2D/3D polyline): "); if (boundaryPick.Status != PromptStatus.OK) return;
-            var breakPick = ed.GetSelection(new PromptSelectionOptions { MessageForAdding = "\nSelect optional breakline polylines; Enter for whole area: " });
+            var boundaryPick = ed.GetEntity("\nSelect closed pavement boundary (feature line or 2D/3D polyline): "); if (boundaryPick.Status != PromptStatus.OK) return;
+            var breakPick = ed.GetSelection(new PromptSelectionOptions { MessageForAdding = "\nSelect optional feature-line/polyline breaklines; Enter for whole area: " });
             if (breakPick.Status == PromptStatus.Cancel) return;
             if (breakPick.Status != PromptStatus.OK && breakPick.Status != PromptStatus.Error) return;
             var low = ed.GetDouble(new PromptDoubleOptions("\nMinimum slope percent: ") { AllowNegative=false, AllowZero=true }); if(low.Status != PromptStatus.OK) return;
             var high = ed.GetDouble(new PromptDoubleOptions("\nMaximum slope percent: ") { AllowNegative=false, AllowZero=true }); if(high.Status != PromptStatus.OK) return;
             if (!double.IsFinite(low.Value) || !double.IsFinite(high.Value) || low.Value > high.Value) throw new ArgumentException("Invalid limits.");
+            var chord = ed.GetDouble(new PromptDoubleOptions("\nMaximum arc chord deviation in drawing units <0.001>: ") { AllowNegative=false, AllowZero=false, DefaultValue=0.001, UseDefaultValue=true });
+            if(chord.Status != PromptStatus.OK) return;
             var items = new List<DrawingItem>();
             int read = 0, skipped = 0;
             using (doc.LockDocument())
@@ -37,6 +39,17 @@ public sealed partial class Plugin
                 {
                     var entity = tr.GetObject(id,OpenMode.ForRead);
                     var points = new List<Coordinate>(); bool closed;
+                    if(entity is FeatureLine feature)
+                    {
+                        if(feature.IsReferenceObject && (!feature.IsReferenceValid || feature.IsReferenceStale || !feature.IsReferencedSourceExisting)) throw new ArgumentException("Feature-line reference is invalid, stale or missing.");
+                        closed=feature.Closed;
+                        if(mustClose && !closed) throw new ArgumentException("The pavement boundary feature line must be closed.");
+                        var pi=feature.GetPoints(Autodesk.Civil.FeatureLinePointType.PIPoint);
+                        foreach(Autodesk.AutoCAD.Geometry.Point3d point in pi) points.Add(new(point.X,point.Y));
+                        var sampled=PlanCurve.Read(points,closed,feature.GetBulge,chord.Value,out var length);
+                        if(!double.IsFinite(feature.Length2D) || Math.Abs(length-feature.Length2D)>Math.Max(1,feature.Length2D)*1e-7) throw new ArgumentException("Feature-line segments do not match its plan length; smoothed or unsupported geometry. No approximation published.");
+                        return sampled;
+                    }
                     if (entity is Polyline p)
                     {
                         closed = p.Closed;
@@ -52,7 +65,7 @@ public sealed partial class Plugin
                         closed=p3.Closed;
                         foreach(ObjectId vertexId in p3) { var point=((PolylineVertex3d)tr.GetObject(vertexId,OpenMode.ForRead)).Position; points.Add(new(point.X,point.Y)); }
                     }
-                    else throw new ArgumentException("Select straight 2D/3D polylines. Feature lines and other curve types are not yet supported.");
+                    else throw new ArgumentException("Select feature line or 2D/3D polylines. Feature lines and other curve types are not yet supported.");
                     if(points.Count<2 || points.Count>10000 || (mustClose && !closed)) throw new ArgumentException("Boundary must be closed; each polyline needs 2–10,000 vertices.");
                     if(closed && !points[0].Equals2D(points[^1])) points.Add(points[0].Copy());
                     return points.ToArray();
@@ -84,6 +97,7 @@ public sealed partial class Plugin
                         rows[0] = new PropertyValue("Assessment", "INCOMPLETE — unusable surface data; no whole-area verdict.");
                         rows.Insert(0,new("Data quality", $"{skipped} unusable triangles in surface scan; assessment is provisional, not a pass."));
                     }
+                    rows.Insert(0,new("Curve approximation", FormattableString.Invariant($"Feature-line arcs use maximum chord deviation {chord.Value} drawing units; areas near curves are approximate. Straight polyline support unchanged.")));
                     rows.Insert(0,new("Subdivision", $"{zones.Count} closed region(s) from boundary and selected breaklines. Dangling/open lines that do not close a region do not subdivide it. No automatic surface-breakline extraction or gap snapping."));
                     items.Add(new DrawingItem("Area assessment",name,rows));
                 }
@@ -96,9 +110,10 @@ public sealed partial class Plugin
         }
         catch(System.Exception ex)
         {
-            panel?.InvalidateDrawing("Area assessment unavailable. No partial assessment retained.");
+            panel?.InvalidateDrawing($"Area assessment unavailable: {(ex is ArgumentException ? ex.Message : ex.GetType().Name)}. No partial assessment retained.");
             ed.WriteMessage($"\nArea assessment stopped: {(ex is ArgumentException ? ex.Message : ex.GetType().Name)}. No drawing modifications made.\n");
         }
     }
 }
+
 

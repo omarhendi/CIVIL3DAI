@@ -58,3 +58,12 @@ Check(areaTotals.Rows(100,1,5).Single(p=>p.Name=="Outside limits / assessed area
 Check(areaTotals.Rows(100,1,5).Single(p=>p.Name=="Plan-area-weighted mean slope").Value=="8 %");
 Check(areaTotals.Rows(200,1,5)[0].Value.StartsWith("INCOMPLETE"));
 Console.WriteLine("Area partition, clipping, weighting and coverage checks passed.");
+var arc=PlanCurve.Read(new[] {new NetTopologySuite.Geometries.Coordinate(-1,0),new(1,0)},false,_=>1,0.001,out var arcLength);
+Check(Math.Abs(arcLength-Math.PI)<1e-10 && arc.Length>10 && arc.Any(p=>p.Y < -0.99));
+for(var i=0;i<arc.Length-1;i++) { var mx=(arc[i].X+arc[i+1].X)/2; var my=(arc[i].Y+arc[i+1].Y)/2; Check(1-Math.Sqrt(mx*mx+my*my)<=0.00100001); }
+var reverseArc=PlanCurve.Read(new[] {new NetTopologySuite.Geometries.Coordinate(-1,0),new(1,0)},false,_=>-1,0.001,out _);
+Check(reverseArc.Any(p=>p.Y>0.99));
+var closedPlan=PlanCurve.Read(square.Coordinates,true,_=>0,0.001,out var perimeter);
+Check(Math.Abs(perimeter-40)<1e-10 && closedPlan.Length==5);
+try { PlanCurve.Read(square.Coordinates,true,_=>double.NaN,0.001,out _); throw new Exception("Expected invalid bulge rejection"); } catch(ArgumentException) {}
+Console.WriteLine("Feature-line plan curve, arc sagitta, winding and closure tests passed.");
