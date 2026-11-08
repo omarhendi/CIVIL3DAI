@@ -26,7 +26,7 @@ internal static class WorkspaceChecks
         try
         {
             var controls = Descendants(workspace).ToArray();
-            var tabs = controls.OfType<TabControl>().Single();
+            var tabs = controls.OfType<TabControl>().Single(t => t.Items.OfType<TabItem>().Any(i => i.Header as string == "Chat"));
             Check(tabs.Items.Count == 5, "Chat, agents, providers, inspector and diagnostics tabs are present");
             T Named<T>(string name) where T : FrameworkElement => controls.OfType<T>().Single(x => x.Name == name);
             Button Button(string label) => controls.OfType<Button>().Single(b => b.Content as string == label);
@@ -87,4 +87,3 @@ internal static class WorkspaceChecks
         public Task<string> SendAsync(PreparedRequest request, string key, CancellationToken cancellation) { Sends++; return Task.FromResult("response"); }
     }
 }
-
