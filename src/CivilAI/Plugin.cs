@@ -28,6 +28,7 @@ public sealed partial class Plugin : IExtensionApplication
         Application.DocumentManager.DocumentToBeDestroyed -= DrawingChanged;
         workspace?.Dispose();
         workspace = null;
+        ClearTriangleLocations();
         lastSnapshot = null;
         palette?.Dispose();
         palette = null;
@@ -36,6 +37,7 @@ public sealed partial class Plugin : IExtensionApplication
 
     private static void DrawingChanged(object sender, DocumentCollectionEventArgs args)
     {
+        ClearTriangleLocations();
         lastSnapshot = null;
         workspace?.SetSnapshot(null);
         panel?.InvalidateDrawing("Drawing context changed. Refresh to inspect the active drawing.");
@@ -52,12 +54,13 @@ public sealed partial class Plugin : IExtensionApplication
     private static void EnsurePanel()
     {
         if (palette is not null) return;
-        panel = new InspectorPanel(RequestRefreshAsync);
+        panel = new InspectorPanel(RequestRefreshAsync, LocateTriangleAsync);
         try
         {
             workspace = new WorkspaceControl(panel, async () =>
             {
-                lastSnapshot = null;
+                ClearTriangleLocations();
+        lastSnapshot = null;
                 workspace?.SetSnapshot(null);
                 await RequestRefreshAsync();
                 return lastSnapshot;
@@ -123,6 +126,7 @@ public sealed partial class Plugin : IExtensionApplication
 
     private static void InspectActiveDrawing()
     {
+        ClearTriangleLocations();
         Document? document = null;
         try
         {
@@ -144,7 +148,8 @@ public sealed partial class Plugin : IExtensionApplication
         }
         catch (System.Exception ex)
         {
-            lastSnapshot = null;
+            ClearTriangleLocations();
+        lastSnapshot = null;
             workspace?.SetSnapshot(null);
             panel!.ShowError("Drawing inspection", ex);
             try { document?.Editor.WriteMessage($"\nCivil AI inspection failed: {ex}\n"); }
@@ -153,6 +158,7 @@ public sealed partial class Plugin : IExtensionApplication
         finally { panel?.EndRefresh(); }
     }
 }
+
 
 
 

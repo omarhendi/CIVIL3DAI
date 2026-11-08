@@ -15,6 +15,7 @@ public sealed partial class Plugin
         var document = Application.DocumentManager.MdiActiveDocument;
         if (document is null) return;
         var editor = document.Editor;
+        ClearTriangleLocations();
         try
         {
             var options = new PromptEntityOptions("\nSelect a TIN surface to locate out-of-range triangles: ");
@@ -30,6 +31,7 @@ public sealed partial class Plugin
             { editor.WriteMessage("\nInvalid limits: minimum must not exceed maximum.\n"); return; }
             var rows = new List<PropertyValue>();
             var findings = new List<(int Index, double Slope, TrianglePoint Centre)>();
+            var locations = new Dictionary<string, Autodesk.AutoCAD.Geometry.Point3d[]>();
             var visited = 0; var invalid = 0; var outside = 0; var complete = true;
             string name;
             using (document.LockDocument())
@@ -56,7 +58,7 @@ public sealed partial class Plugin
                                 if (slope < lower.Value || slope > upper.Value)
                                 {
                                     outside++;
-                                    if (findings.Count < 100) findings.Add((visited, slope, centre));
+                                    if (findings.Count < 100) { findings.Add((visited, slope, centre)); locations[$"Triangle #{visited}"] = new[] { a, b, c }; }
                                 }
                             }
                             catch (System.Exception) { invalid++; }
@@ -70,8 +72,11 @@ public sealed partial class Plugin
             rows.Add(new("Triangle scan limits", FormattableString.Invariant($"{lower.Value}–{upper.Value} %. Visible triangles only. Coordinates are WCS drawing units. Indices apply only to this scan.")));
             foreach (var finding in findings)
                 rows.Add(new($"Triangle #{finding.Index}", FormattableString.Invariant($"Slope {finding.Slope:0.#####} %; centre X={finding.Centre.X:0.######}, Y={finding.Centre.Y:0.######}, Z={finding.Centre.Z:0.######}")));
-            rows.Add(new("Triangle scan scope", "Locations only: no markers, zoom, rebuild, or geometry edits. No pavement/landscape classification or compliance verdict. Missing/partial data cannot establish a pass. Scan stops after 100,000 triangles or 5 seconds between API calls; a native API call itself cannot be interrupted."));
+            rows.Add(new("Triangle scan scope", "Double-click a triangle row to temporarily zoom and highlight. Press Enter to clear and restore the view. No persistent markers or geometry edits. No pavement/landscape classification or compliance verdict. Missing/partial data cannot establish a pass. Scan stops after 100,000 triangles or 5 seconds between API calls; a native API call itself cannot be interrupted."));
             EnsurePanel();
+            triangleDocument = document;
+            triangleSource = selected.ObjectId;
+            triangleLocations = locations;
             palette!.Visible = true;
             lastSnapshot = null;
             workspace?.SetSnapshot(null);
@@ -82,3 +87,4 @@ public sealed partial class Plugin
         { editor.WriteMessage($"\nCivil AI triangle scan unavailable ({ex.GetType().Name}). No rebuild or drawing edits attempted.\n"); }
     }
 }
+

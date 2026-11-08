@@ -31,7 +31,7 @@ internal sealed class InspectorPanel : UserControl
         summary.ItemsSource = rows;
     }
 
-    public InspectorPanel(Func<Task> refresh)
+    public InspectorPanel(Func<Task> refresh, Func<string, Task>? locateTriangle = null)
     {
         this.refresh = refresh;
         Background = SystemColors.WindowBrush;
@@ -63,8 +63,14 @@ internal sealed class InspectorPanel : UserControl
             Grid.SetRow(control, row++);
             root.Children.Add(control);
         }
+        properties.MouseDoubleClick += async (_, _) =>
+        {
+            if (locateTriangle is null || objects.SelectedItem is not DrawingItem { Kind: "Triangle locations" } || properties.SelectedItem is not PropertyValue selected || !selected.Name.StartsWith("Triangle #")) return;
+            try { await locateTriangle(selected.Name); }
+            catch (Exception ex) { Stage($"Locate failed ({ex.GetType().Name}). Run the triangle scan again."); }
+        };
         properties.Columns.Add(new DataGridTextColumn { Header = "Property", Binding = new System.Windows.Data.Binding("Name") });
-        properties.Columns.Add(new DataGridTextColumn { Header = "Value", Binding = new System.Windows.Data.Binding("Value"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+        properties.Columns.Add(new DataGridTextColumn { Header = "Value", Binding = new System.Windows.Data.Binding("Value"), Width = new DataGridLength(1, DataGridLengthUnitType.Star), ElementStyle = valueStyle });
         objects.SelectionChanged += (_, _) =>
         {
             var selected = objects.SelectedItem as DrawingItem;
@@ -172,4 +178,5 @@ internal sealed class InspectorPanel : UserControl
         }; }
     });
 }
+
 
