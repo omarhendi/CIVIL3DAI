@@ -40,6 +40,11 @@ internal static class Program
         panel.Show(new DrawingSnapshot("Site.dwg", new[] { first, second }, 1, 8, new[] { "Object read failed" }));
         Check(list.Items.Count == 2 && ReferenceEquals(properties.ItemsSource, first.Properties), "New inventory automatically selects and displays first object's properties");
         Check(detailTabs.SelectedIndex == 0 && summary.Items.Count > 0, "Surface selection opens summary");
+        var limitFields = controls.OfType<WrapPanel>().Single().Children.OfType<TextBox>().ToArray();
+        limitFields[0].Text = "5"; limitFields[1].Text = "2";
+        Check(summary.Items.Cast<PropertyValue>().Any(p => p.Name == "Slope check" && p.Value.StartsWith("Invalid")), "Editing limits updates result and rejects reversed limits");
+        limitFields[0].Text = "0";
+        Check(summary.Items.Cast<PropertyValue>().Any(p => p.Name == "Slope check" && p.Value.StartsWith("Unavailable")), "Missing slopes never pass configured limits");
         list.SelectedIndex = 1;
         Check(ReferenceEquals(properties.ItemsSource, second.Properties), "Changing selection updates property rows");
         Check(diagnostics.Text.Contains("Object read failed"), "Partial inspection failures are visible");

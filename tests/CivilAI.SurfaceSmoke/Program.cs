@@ -27,3 +27,14 @@ Check(summary.Single(p => p.Name == "Maximum slope").Value == "170.26293 %");
 Check(summary.Single(p => p.Name == "Mean slope").Value == "12.89705 %");
 Check(summary.Single(p => p.Name == "Minimum elevation").Value.StartsWith("Unavailable"));
 Console.WriteLine("Surface summary conversion and missing-data checks passed.");
+DrawingItem Slopes(string min, string max) => new("TIN surface", "Synthetic", new[] {
+    new PropertyValue("MinimumGradeOrSlope (API raw)", min), new PropertyValue("MaximumGradeOrSlope (API raw)", max) });
+Check(SlopeLimits.Evaluate(Slopes("0.01", "0.05"), "1", "5").Value.StartsWith("Within"));
+Check(SlopeLimits.Evaluate(Slopes("0.001", "0.06"), "1", "5").Value.Contains("minimum below range and maximum above"));
+Check(SlopeLimits.Evaluate(Slopes("0.01", "0.06"), "1", "5").Value.Contains("maximum above"));
+foreach (var limits in new[] { ("NaN", "5"), ("1", "Infinity"), ("-1", "5"), ("6", "5"), ("1,5", "5"), ("", "5") })
+    Check(SlopeLimits.Evaluate(Slopes("0", "1"), limits.Item1, limits.Item2).Value.StartsWith("Invalid"));
+Check(SlopeLimits.Evaluate(Slopes("NaN", "1"), "0", "5").Value.StartsWith("Unavailable"));
+Check(SlopeLimits.Evaluate(Slopes("2", "1"), "0", "5").Value.StartsWith("Unavailable"));
+Check(SlopeLimits.Evaluate(Slopes("0", "1"), "", "").Value.StartsWith("Not configured"));
+Console.WriteLine("Slope limit boundary and invalid-input checks passed.");

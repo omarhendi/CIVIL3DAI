@@ -19,7 +19,17 @@ internal sealed class InspectorPanel : UserControl
 
     private readonly DataGrid summary = new() { Name = "SurfaceSummary", IsReadOnly = true, AutoGenerateColumns = false, CanUserAddRows = false, Margin = new Thickness(8) };
     private readonly TabControl details = new();
+    private readonly TextBox minimumSlope = new() { Name = "MinimumSlopeLimit", Width = 65, Margin = new Thickness(4), ToolTip = "Minimum slope percent; decimal point, e.g. 0.5" };
+    private readonly TextBox maximumSlope = new() { Name = "MaximumSlopeLimit", Width = 65, Margin = new Thickness(4), ToolTip = "Maximum slope percent; decimal point, e.g. 5" };
     private readonly Func<Task> refresh;
+    private void UpdateSummary()
+    {
+        var selected = objects.SelectedItem as DrawingItem;
+        if (selected is null) { summary.ItemsSource = null; return; }
+        var rows = SurfaceSummary.Create(selected).ToList();
+        if (selected.Kind == "TIN surface") rows.Insert(1, SlopeLimits.Evaluate(selected, minimumSlope.Text, maximumSlope.Text));
+        summary.ItemsSource = rows;
+    }
 
     public InspectorPanel(Func<Task> refresh)
     {
@@ -38,9 +48,17 @@ internal sealed class InspectorPanel : UserControl
         summary.Columns.Add(new DataGridTextColumn { Header = "Value", Binding = new System.Windows.Data.Binding("Value"), Width = new DataGridLength(1, DataGridLengthUnitType.Star), ElementStyle = valueStyle });
         details.Items.Add(new TabItem { Header = "Surface Summary", Content = summary });
         details.Items.Add(new TabItem { Header = "All Properties", Content = properties });
+        var limits = new WrapPanel { Margin = new Thickness(8, 0, 8, 0) };
+        limits.Children.Add(new TextBlock { Text = "Slope limits % (session): Min", VerticalAlignment = VerticalAlignment.Center });
+        limits.Children.Add(minimumSlope);
+        limits.Children.Add(new TextBlock { Text = "Max", VerticalAlignment = VerticalAlignment.Center });
+        limits.Children.Add(maximumSlope);
+        minimumSlope.TextChanged += (_, _) => UpdateSummary();
+        maximumSlope.TextChanged += (_, _) => UpdateSummary();
+        root.RowDefinitions.Insert(3, new RowDefinition { Height = GridLength.Auto });
         var row = 0;
         button.Click += RefreshClicked;
-        foreach (var control in new UIElement[] { button, status, diagnostics, objects, details })
+        foreach (var control in new UIElement[] { button, status, diagnostics, limits, objects, details })
         {
             Grid.SetRow(control, row++);
             root.Children.Add(control);
@@ -51,7 +69,7 @@ internal sealed class InspectorPanel : UserControl
         {
             var selected = objects.SelectedItem as DrawingItem;
             properties.ItemsSource = selected?.Properties;
-            summary.ItemsSource = selected is null ? null : SurfaceSummary.Create(selected);
+            UpdateSummary();
             details.SelectedIndex = selected?.Kind == "TIN surface" ? 0 : 1;
         };
         Content = root;
