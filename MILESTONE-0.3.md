@@ -46,3 +46,13 @@ Acceptance pending: on a disposable known plane, compare returned percent and WC
 Autodesk 2026 API references:
 - https://help.autodesk.com/cloudhelp/2026/ENU/Civil3D-API/files/html/7b0cc1ae-c036-49a5-5a91-38192e3bcc6d.htm
 - https://help.autodesk.com/cloudhelp/2026/ENU/Civil3D-API/files/html/73616c27-259d-c2f6-dcbf-064c094bdf53.htm
+
+## 0.3.4 temporary triangle locate
+
+After CIVILAIFINDSLOPES, double-click a Triangle # row in All Properties. In the Model tab, the plugin revalidates the cached triangle vertices and reference status, switches temporarily to WCS top view, zooms to the triangle and outlines its three edges in red using transient graphics. Enter or Esc clears the transient edges and restores the original view. No entity is added to the database. View changes can affect DBMOD view-state flags; unchanged DBMOD is not guaranteed for this display action. Coordinates now wrap in All Properties.
+
+Refreshing, changing/closing the active drawing, or starting another scan invalidates stored locations. Changed/hidden/deleted triangles are rejected at locate time. Paper-space use is rejected. Only one locate may run at a time. The native view and transient APIs require in-host acceptance; cloud tests do not prove graphics behavior.
+
+Acceptance pending: scan EDGE02, double-click each finding, verify red edges and location; Enter and Esc must clear the outline and restore the previous view. Repeat with a rotated view; switch drawings or edit a surface before locating and verify stale locations are refused. Confirm no new database entities appear. Earlier triangle scan was user-tested with 532 triangles, two findings (130.92862% and 170.26293%), and unchanged DBMOD.
+
+Transient API: https://help.autodesk.com/cloudhelp/2026/ENU/OARX-ManagedRefGuide/files/OARX-ManagedRefGuide-Autodesk_AutoCAD_GraphicsInterface_TransientManager_AddTransient_Drawable_TransientDrawingMode_int_IntegerCollection.html

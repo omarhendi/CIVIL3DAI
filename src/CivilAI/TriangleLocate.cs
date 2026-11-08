@@ -82,6 +82,7 @@ public sealed partial class Plugin
                         foreach (var line in lines)
                         {
                             try { TransientManager.CurrentTransientManager.EraseTransient(line, viewports); }
+                            catch (System.Exception) { panel?.Stage("Transient cleanup failed; regenerate the view to clear display artifacts."); }
                             finally { line.Dispose(); }
                         }
                         editor.SetCurrentView(previous);
@@ -95,3 +96,4 @@ public sealed partial class Plugin
         finally { locating = false; }
     }
 }
+

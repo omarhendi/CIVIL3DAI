@@ -10,11 +10,12 @@ internal static class Program
     {
         WorkspaceChecks.Run();
         var calls = 0;
+        string? located = null;
         var panel = new InspectorPanel(() =>
         {
             calls++;
             return Task.FromException(new InvalidOperationException("Refresh probe failed"));
-        });
+        }, key => { located = key; return Task.CompletedTask; });
         var controls = ((Grid)panel.Content).Children.Cast<UIElement>().ToArray();
         var status = controls.OfType<TextBlock>().Single();
         var diagnostics = controls.OfType<TextBox>().Single();
@@ -64,7 +65,14 @@ internal static class Program
         Dispatcher.PushFrame(frame);
         Check(calls == 1 && status.Text.Contains("Refresh probe failed") && diagnostics.Text.Contains("InvalidOperationException"), "Button callback exceptions are caught and displayed");
         Check(diagnostics.Text.Contains("Refresh clicked"), "Exception output retains the click and stage trace");
+        var location = new PropertyValue("Triangle #12", "Slope 170%; centre X=123456.123456, Y=987654.123456, Z=12.5");
+        panel.Show(new DrawingSnapshot("Site.dwg", new[] { new DrawingItem("Triangle locations", "Ground", new[] { location }) }, 0, 1, Array.Empty<string>()));
+        properties.SelectedItem = location;
+        properties.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left) { RoutedEvent = Control.MouseDoubleClickEvent });
+        Check(located == "Triangle #12", "Double-click triangle finding invokes locate callback");
+        Check(((DataGridTextColumn)properties.Columns[1]).ElementStyle.Setters.OfType<Setter>().Any(x => x.Property == TextBlock.TextWrappingProperty && Equals(x.Value, TextWrapping.Wrap)), "Coordinates wrap in property values");
         panel.InvalidateDrawing("No drawing is active.");
         Check(properties.Items.Count == 0 && status.Text.Contains("No drawing"), "Drawing context changes clear stale properties");
     }
 }
+
