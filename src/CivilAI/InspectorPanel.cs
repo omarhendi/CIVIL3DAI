@@ -153,6 +153,7 @@ internal sealed class InspectorPanel : UserControl
               $"{snapshot.Items.Count(i => i.Kind == "Feature line")} feature lines.\n" +
               (snapshot.Items.Count == 0 ? "No native TIN surfaces or feature lines were found in the inspected objects.\n" : "Select an object to view its properties.\n") +
               "Read-only snapshot. Refresh after drawing changes.";
+        if (snapshot.Items.Any(i => i.Kind == "Triangle locations")) status.Text = "Triangle locations report — " + snapshot.Items[0].Name + "\nRead-only snapshot. See All Properties. Refresh restores the drawing inventory.";
         diagnostics.AppendText($"Completed {DateTimeOffset.Now:O}\nScanned {snapshot.Scanned} unique objects; {snapshot.Unavailable} object reads failed.\n" +
                            string.Join("\n", snapshot.Diagnostics) + "\n");
         diagnostics.ScrollToEnd();
@@ -171,3 +172,4 @@ internal sealed class InspectorPanel : UserControl
         }; }
     });
 }
+

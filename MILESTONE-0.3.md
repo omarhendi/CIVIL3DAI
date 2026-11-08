@@ -34,3 +34,15 @@ The summary update needs a short in-host visual check after deployment. Keep the
 Enter minimum and maximum percentages in the inspector's Slope limits fields. Both start blank; no engineering limits are assumed. Use decimal points. Limits apply to the selected surface's whole-surface minimum and maximum, inclusively, and update immediately against the current detached snapshot. They remain in memory for the session and apply as you select other surfaces; restart clears them. Clear both fields to disable checks. Invalid inputs and unavailable/inconsistent statistics never produce a within-limits result. The check neither locates triangles nor classifies pavement/landscape areas or establishes compliance. Refresh after drawing changes.
 
 Host acceptance: select a known TIN, enter a range enclosing its extrema and confirm Within configured limits. Lower the maximum below its observed maximum and confirm Outside limits. Reverse the limits and confirm Invalid limits. An empty TIN must say Unavailable with valid limits. Verify DBMOD is unchanged when editing limits. These new in-host checks remain pending; earlier acceptance observations above apply to earlier builds.
+
+## 0.3.3 triangle locations
+
+Run CIVILAIFINDSLOPES, select one TIN in the drawing, then enter minimum and maximum percentages. Results replace the inspector inventory with one Triangle locations report under All Properties. This is an explicit scan, separate from the session limit fields. Refresh restores the usual inventory. Visible triangles only (GetTriangles(false)); hole-boundary invisible triangles are excluded. Each finding has the scan ordinal, planar slope percent and centroid in WCS drawing units. Reports retain the first 100 findings, not the steepest 100. No markers or view changes are made. Centroids help locate triangles, but do not establish whether they are pavement, edges, landscape or errors.
+
+The scan processes at most 100,000 triangles or five seconds between API calls. Native calls themselves cannot be interrupted. Partial scans and unusable triangles are reported; zero findings never proves compliance. Degenerate/near-vertical projected triangles are unusable, not zero-slope. API wrapper objects are disposed within the read transaction. Reference guards and the provider block remain in place.
+
+Acceptance pending: on a disposable known plane, compare returned percent and WCS centroid with known geometry; verify limits, cancel each prompt, empty TIN, invalid references and unchanged DBMOD. Test EDGE02 locally with 0–100% to locate steep areas. Do not upload drawing data. User already verified the 0.3.2 within/outside/invalid/unavailable outcomes and unchanged DBMOD (1) while changing limits.
+
+Autodesk 2026 API references:
+- https://help.autodesk.com/cloudhelp/2026/ENU/Civil3D-API/files/html/7b0cc1ae-c036-49a5-5a91-38192e3bcc6d.htm
+- https://help.autodesk.com/cloudhelp/2026/ENU/Civil3D-API/files/html/73616c27-259d-c2f6-dcbf-064c094bdf53.htm
