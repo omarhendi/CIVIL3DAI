@@ -1,0 +1,20 @@
+using CivilAI;
+void Check(bool condition) { if (!condition) throw new Exception("Surface statistic assertion failed"); }
+var stats = new SurfaceStatistics();
+stats.Read("MinimumElevation", () => -10);
+stats.Read("MaximumElevation", () => 10);
+stats.Read("MeanElevation", () => 0);
+Check(!stats.Finish().Any(x => x.Name == "Diagnostic"));
+var broken = new SurfaceStatistics();
+broken.Read("NaN", () => double.NaN);
+broken.Read("Infinity", () => double.PositiveInfinity);
+broken.Read("Negative", () => -1, true);
+broken.Read("Throw", () => throw new InvalidOperationException("secret drawing path"));
+broken.Read("MinimumElevation", () => 10);
+broken.Read("MaximumElevation", () => 0);
+broken.Read("SurfaceArea2D", () => 0, true);
+var rows = broken.Finish();
+Check(rows.Count(x => x.Value.StartsWith("Unavailable")) == 4);
+Check(rows.Count(x => x.Name == "Diagnostic") == 2);
+Check(!rows.Any(x => x.Value.Contains("secret")));
+Console.WriteLine("Surface statistics checks passed.");

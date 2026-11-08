@@ -17,6 +17,8 @@ jobs:
         run: dotnet restore src/CivilAI/CivilAI.csproj --source https://api.nuget.org/v3/index.json
       - name: Build .NET 8 Windows plugin
         run: dotnet build src/CivilAI/CivilAI.csproj --configuration Release --no-restore
+      - name: Validate surface statistics
+        run: dotnet run --project tests/CivilAI.SurfaceSmoke/CivilAI.SurfaceSmoke.csproj --configuration Release
       - name: Validate reference-property guards and failure isolation
         run: dotnet run --project tests/CivilAI.PropertySmoke/CivilAI.PropertySmoke.csproj --configuration Release
       - name: Validate workspace storage, providers and read-only tool policy
@@ -33,6 +35,8 @@ jobs:
       - name: Upload CivilAI.dll only
         uses: actions/upload-artifact@v4
         with:
-          name: CivilAI-0.2-${{ github.sha }}
+          name: CivilAI-0.3-${{ github.sha }}
           path: src/CivilAI/bin/Release/net8.0-windows/CivilAI.dll
           if-no-files-found: error
+
+

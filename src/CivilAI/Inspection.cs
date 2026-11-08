@@ -82,29 +82,43 @@ internal static class Inspection
         result.Insert(0, new PropertyValue("Type", value.GetType().FullName ?? value.GetType().Name));
         if (value is TinSurface surface)
         {
-            // These methods return statistics only; never rebuild or change the surface.
+            var stats = new SurfaceStatistics();
+            try
+            {
+                if (isReference is null || (isReference == true &&
+                    (!surface.IsReferenceValid || surface.IsReferenceStale || !surface.IsReferencedSourceExisting)))
+                {
+                    result.Add(new PropertyValue("Surface intelligence", "Unavailable: unknown, invalid, stale, or missing reference source. No synchronization attempted."));
+                    return result;
+                }
+            }
+            catch (Exception ex)
+            {
+                stats.Unavailable("Reference validation", ex);
+                result.AddRange(stats.Finish());
+                return result;
+            }
             try
             {
                 var general = surface.GetGeneralProperties();
-                result.Add(PropertyInspection.ReadValue("MinimumElevation", () => general.MinimumElevation, log));
-                result.Add(PropertyInspection.ReadValue("MaximumElevation", () => general.MaximumElevation, log));
-                result.Add(PropertyInspection.ReadValue("MeanElevation", () => general.MeanElevation, log));
+                stats.Read("MinimumElevation", () => general.MinimumElevation);
+                stats.Read("MaximumElevation", () => general.MaximumElevation);
+                stats.Read("MeanElevation", () => general.MeanElevation);
             }
-            catch (Exception ex)
-            {
-                result.Add(PropertyInspection.Failure("General surface statistics", ex, log));
-            }
+            catch (Exception ex) { stats.Unavailable("Elevation statistics", ex); }
             try
             {
                 var terrain = surface.GetTerrainProperties();
-                result.Add(PropertyInspection.ReadValue("SurfaceArea2D (drawing units squared)", () => terrain.SurfaceArea2D, log));
-                result.Add(PropertyInspection.ReadValue("SurfaceArea3D (drawing units squared)", () => terrain.SurfaceArea3D, log));
+                stats.Read("SurfaceArea2D", () => terrain.SurfaceArea2D, true);
+                stats.Read("SurfaceArea3D", () => terrain.SurfaceArea3D, true);
+                stats.Read("MinimumGradeOrSlope (API raw)", () => terrain.MinimumGradeOrSlope, true);
+                stats.Read("MaximumGradeOrSlope (API raw)", () => terrain.MaximumGradeOrSlope, true);
+                stats.Read("MeanGradeOrSlope (API raw)", () => terrain.MeanGradeOrSlope, true);
             }
-            catch (Exception ex)
-            {
-                result.Add(PropertyInspection.Failure("Terrain surface statistics", ex, log));
-            }
+            catch (Exception ex) { stats.Unavailable("Terrain statistics", ex); }
+            result.AddRange(stats.Finish());
         }
         return result;
     }
 }
+

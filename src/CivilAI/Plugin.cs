@@ -67,7 +67,7 @@ public sealed class Plugin : IExtensionApplication
         {
             panel.ShowError("Opening agent workspace (drawing inspector remains available)", ex);
         }
-        palette = new PaletteSet("Civil AI 0.2", new Guid("5D6BA622-E467-4433-BF96-265A286B88E8"))
+        palette = new PaletteSet("Civil AI 0.3", new Guid("5D6BA622-E467-4433-BF96-265A286B88E8"))
         {
             Style = PaletteSetStyles.ShowAutoHideButton | PaletteSetStyles.ShowCloseButton | PaletteSetStyles.ShowPropertiesMenu,
             MinimumSize = new System.Drawing.Size(440, 600),
@@ -153,3 +153,4 @@ public sealed class Plugin : IExtensionApplication
         finally { panel?.EndRefresh(); }
     }
 }
+

@@ -47,12 +47,12 @@ internal static class WorkspaceChecks
             Check(Named<PasswordBox>("SessionApiKey").Password.Length == 0, "Changing provider clears the previous session key");
             Named<TextBox>("ProviderModel").Text = "test-model";
             Click("Review & send");
-            Check(approvals == 1 && provider.Sends == 0, "Declining approval prevents provider send");
+            Check(approvals == 0 && provider.Sends == 0, "Offline milestone prevents provider approval");
             approveNext = true;
             Named<CheckBox>("IncludeDrawingSnapshot").IsChecked = true;
             Click("Review & send");
-            Check(approvals == 2 && provider.Sends == 1, "Approved snapshot request invokes provider exactly once");
-            Check(Named<ListBox>("ConversationHistory").Items.Cast<ChatMessage>().Any(m => m.Role == "assistant" && m.Content == "response"), "Approved provider reply appears in history");
+            Check(approvals == 0 && provider.Sends == 0, "Offline milestone blocks even opted-in snapshot requests");
+            Check(!Named<ListBox>("ConversationHistory").Items.Cast<ChatMessage>().Any(m => m.Role == "assistant"), "Offline milestone has no provider reply");
             Check(!Named<TextBox>("WorkspaceDiagnostics").Text.Contains("test-key"), "Diagnostics contain no key values");
             workspace.SetSnapshot(null);
             Check(Named<CheckBox>("IncludeDrawingSnapshot").IsChecked == false, "Drawing switch clears snapshot opt-in");
@@ -87,3 +87,4 @@ internal static class WorkspaceChecks
         public Task<string> SendAsync(PreparedRequest request, string key, CancellationToken cancellation) { Sends++; return Task.FromResult("response"); }
     }
 }
+

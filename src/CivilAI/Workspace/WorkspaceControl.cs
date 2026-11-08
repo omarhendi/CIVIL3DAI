@@ -74,7 +74,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         cancel.IsEnabled = false;
         var root = new DockPanel();
         var header = new StackPanel { Margin = new Thickness(10, 8, 10, 0) };
-        header.Children.Add(new TextBlock { Text = "CIVIL AI  /  0.2", FontSize = 21, FontWeight = FontWeights.SemiBold, Foreground = Brush("#70D8D0") });
+        header.Children.Add(new TextBlock { Text = "CIVIL AI  /  0.3", FontSize = 21, FontWeight = FontWeights.SemiBold, Foreground = Brush("#70D8D0") });
         header.Children.Add(new TextBlock { Text = "Agent workspace · Read-only drawing tools", Margin = new Thickness(0, 3, 0, 6) });
         DockPanel.SetDock(header, Dock.Top); root.Children.Add(header);
         DockPanel.SetDock(state, Dock.Bottom); root.Children.Add(state);
@@ -226,8 +226,10 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         SetSnapshot(result);
         Append(new ChatMessage("local", $"Local inspection: {Path.GetFileName(result.Drawing)}\n{result.Items.Count(i => i.Kind == "TIN surface")} TIN surfaces; {result.Items.Count(i => i.Kind == "Feature line")} feature lines. Details are in Drawing Inspector. This snapshot has not been sent to a provider."));
     }
+    private static bool OfflineMilestone => true;
     private async Task SendAsync()
     {
+        if (OfflineMilestone) { Log("Civil AI 0.3 milestone is offline. Provider requests are disabled."); return; }
         if (busy) return;
         var agent = agentSelector.SelectedItem as AgentProfile ?? throw new InvalidOperationException("Select an agent.");
         if ((string?)providers.SelectedItem == "Offline") { Log("Offline: compose messages, manage agents and inspect drawings locally. Select a provider to send a message."); return; }
@@ -312,3 +314,5 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         SaveSettings(); disposed = true; pending?.Cancel(); (provider as IDisposable)?.Dispose(); key.Clear();
     }
 }
+
+
