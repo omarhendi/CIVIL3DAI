@@ -53,7 +53,7 @@ public sealed partial class Plugin
                     }
                     using var previous = editor.GetCurrentView();
                     using var view = editor.GetCurrentView();
-                    using var viewports = new IntegerCollection();
+                    var viewports = new IntegerCollection();
                     var lines = new List<Line>();
                     try
                     {
@@ -96,4 +96,5 @@ public sealed partial class Plugin
         finally { locating = false; }
     }
 }
+
 
