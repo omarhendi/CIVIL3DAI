@@ -9,7 +9,7 @@ using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace CivilAI;
 
-public sealed class Plugin : IExtensionApplication
+public sealed partial class Plugin : IExtensionApplication
 {
     private static PaletteSet? palette;
     private static InspectorPanel? panel;
@@ -153,5 +153,6 @@ public sealed class Plugin : IExtensionApplication
         finally { panel?.EndRefresh(); }
     }
 }
+
 
 

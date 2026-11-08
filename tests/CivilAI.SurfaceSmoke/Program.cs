@@ -38,3 +38,10 @@ Check(SlopeLimits.Evaluate(Slopes("NaN", "1"), "0", "5").Value.StartsWith("Unava
 Check(SlopeLimits.Evaluate(Slopes("2", "1"), "0", "5").Value.StartsWith("Unavailable"));
 Check(SlopeLimits.Evaluate(Slopes("0", "1"), "", "").Value.StartsWith("Not configured"));
 Console.WriteLine("Slope limit boundary and invalid-input checks passed.");
+Check(TriangleSlope.TryCalculate(new(0,0,0), new(1,0,1.7), new(0,1,0), out var grade, out var centre));
+Check(Math.Abs(grade - 170) < 1e-10 && Math.Abs(centre.X - 1d/3) < 1e-10);
+Check(TriangleSlope.TryCalculate(new(0,1,0), new(1,0,1.7), new(0,0,0), out var reversed, out _) && Math.Abs(reversed-grade)<1e-10);
+Check(TriangleSlope.TryCalculate(new(500000,800000,50), new(500001,800000,50), new(500000,800001,50), out var flat, out _) && flat == 0);
+Check(!TriangleSlope.TryCalculate(new(0,0,0),new(1,0,0),new(2,0,0),out _,out _));
+Check(!TriangleSlope.TryCalculate(new(double.NaN,0,0),new(1,0,0),new(0,1,0),out _,out _));
+Console.WriteLine("Triangle slope, winding, coordinates and degenerate geometry checks passed.");
