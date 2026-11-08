@@ -19,7 +19,9 @@ jobs:
         run: dotnet build src/CivilAI/CivilAI.csproj --configuration Release --no-restore
       - name: Validate reference-property guards and failure isolation
         run: dotnet run --project tests/CivilAI.PropertySmoke/CivilAI.PropertySmoke.csproj --configuration Release
-      - name: Validate WPF refresh states and bindings
+      - name: Validate workspace storage, providers and read-only tool policy
+        run: dotnet run --project tests/CivilAI.WorkspaceSmoke/CivilAI.WorkspaceSmoke.csproj --configuration Release
+      - name: Validate WPF workspace, refresh states and bindings
         run: dotnet run --project tests/CivilAI.PanelSmoke/CivilAI.PanelSmoke.csproj --configuration Release
       - name: Verify output contains no dependency DLLs
         shell: pwsh
@@ -31,6 +33,6 @@ jobs:
       - name: Upload CivilAI.dll only
         uses: actions/upload-artifact@v4
         with:
-          name: CivilAI-0.1-${{ github.sha }}
+          name: CivilAI-0.2-${{ github.sha }}
           path: src/CivilAI/bin/Release/net8.0-windows/CivilAI.dll
           if-no-files-found: error

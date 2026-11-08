@@ -8,6 +8,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/CivilAI/Workspace/*.cs" Link="Workspace/%(Filename)%(Extension)" />
     <Compile Include="../../src/CivilAI/InspectorPanel.cs" Link="InspectorPanel.cs" />
     <Compile Include="../../src/CivilAI/DrawingSnapshot.cs" Link="DrawingSnapshot.cs" />
   </ItemGroup>

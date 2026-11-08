@@ -1,57 +1,71 @@
-# Civil AI 0.1
+# Civil AI 0.2 — Civil 3D agent workspace
 
-Native C#/.NET 8, x64 WPF plugin for Autodesk Civil 3D 2026. This first milestone is a read-only drawing inspector. No AI services, keys, telemetry or external data transmission are implemented.
+Native x64 WPF/.NET 8 plugin for Autodesk Civil 3D 2026. Branch `civilai-v0.2` develops the workspace; stable `civilai-v0.1` is preserved. Grading and drawing modifications are **not implemented**.
 
-## Build without a local development installation
+## Get the DLL without installing development software
 
-GitHub Actions builds on a hosted Windows runner; no Autodesk application or development software is needed on your workstation to obtain the DLL. Open the repository's **Actions → Build Civil AI**, select a successful run for `civilai-v0.1`, and download the `CivilAI-0.1-<commit>` artifact. Extract `CivilAI.dll` for testing inside Civil 3D 2026.
+Open [GitHub Actions](https://github.com/omarhendi/CIVIL3DAI/actions), select a successful **Build Civil AI** run for `civilai-v0.2`, and download **CivilAI-0.2-&lt;commit&gt;**. The artifact contains only `CivilAI.dll`. Autodesk DLLs are not copied or uploaded.
 
-For a manual build on Windows or a Linux cloud machine with the .NET 8 SDK:
+The workflow builds on `windows-latest`, runs cross-platform workspace/property checks and Windows WPF smoke checks, then uploads the plugin. It does not launch Civil 3D.
+
+To compile on a Windows or Linux development/cloud machine with .NET 8:
 
 ```powershell
 dotnet restore src/CivilAI/CivilAI.csproj --source https://api.nuget.org/v3/index.json
 dotnet build src/CivilAI/CivilAI.csproj -c Release --no-restore
 ```
 
-The project targets `net8.0-windows`, WPF, and x64, with Windows cross-targeting enabled. It uses official Autodesk-owned NuGet packages pinned to exact versions: `AutoCAD.NET` **25.1.0** (including its Core and Model dependencies) and `Civil3D.NET` **13.8.280**, both for the **2026** products. The Civil references explicitly include `AeccDbMgd.dll` and `AecBaseMgd.dll` (the latter is spelled AecBaseMgd, not AeccBaseMgd).
+References remain official Autodesk-owned NuGet packages, pinned exactly to `AutoCAD.NET` 25.1.0 and `Civil3D.NET` 13.8.280 (2026). The project targets `net8.0-windows`, WPF and x64 with Windows cross-targeting enabled. AutoCAD assets are compile-only; explicit `AeccDbMgd` and `AecBaseMgd` references are not copied locally. No Autodesk installation, API keys or licensed self-hosted build runner is needed to compile. Runtime testing does require Civil 3D 2026 on Windows.
 
-AutoCAD package assets are compile-only. Civil package DLL paths are resolved through NuGet's generated `PkgCivil3D_NET` property and referenced with `Private=false`; package runtime assets are excluded. No machine-specific Autodesk paths or local props file are needed. Autodesk supplies the runtime assemblies inside Civil 3D; do not distribute them with the plugin. CI rejects any dependency DLL in output and uploads only `CivilAI.dll`.
+## Workspace
 
-## Load and use
+Run `CIVILAI` after NETLOAD. The dockable palette contains:
 
-1. Download the CI artifact or build the DLL, then open Civil 3D 2026 (plain AutoCAD is insufficient).
-2. Add your build output directory to Civil 3D's trusted locations using its security settings; retain secure loading.
-3. Run `NETLOAD` and select `src/CivilAI/bin/Release/net8.0-windows/CivilAI.dll`.
-4. Run `CIVILAI`. Dock or float the palette. Select a surface or feature line to see scalar public properties.
-5. Use **Refresh active drawing** after edits. The palette clears when the drawing context changes. The button first displays **Refresh clicked** using WPF alone and yields to the dispatcher for rendering before any Autodesk API call, then shows a waiting status, then uses `ExecuteInCommandContextAsync` to enter AutoCAD's command context. The active document is rechecked, explicitly locked, and inspected in a read transaction. `CIVILAIREFRESH` remains available as a direct command.
+- **Chat**: persistent conversation, agent selector, natural-language composer, resizable history/composer split, local inspection, per-request snapshot opt-in, request review, cancellation and a new-conversation action.
+- **Agents**: create, edit, save, import and export Markdown. Use `# Agent name` as a heading. Select an agent in Chat, then **Edit selected**. Imports receive a new local ID. Files are limited to 1 MiB. Markdown/code fences remain inert text, never scripts, XAML or executable tools.
+- **Providers**: Offline, OpenAI, Anthropic, Google and local OpenAI-compatible configuration; model identifier; local base endpoint; session-only API key; readable text size. Saving settings does not test a connection or transmit data.
+- **Drawing Inspector**: the working native TIN surface and feature-line inventory with name, handle, type, area/elevation information, reference guards, property-level failure isolation, empty-drawing output and stage diagnostics. `CIVILAIREFRESH` remains available.
+- **Diagnostics**: bounded session log of workspace actions and safe errors. Provider bodies and keys are never logged.
 
-The inspector reads Civil's surface collection and native entities in local block definitions/layouts. It lists TIN surfaces (including TIN-derived types) and feature lines, deduplicated by ObjectId. External-reference block contents are excluded; data-reference objects exposed as native entities are included. This is an entity inventory, not an expanded list of block insert instances. Properties are scalar public API getters, including IDs and handles. Collections, geometry graphs and linked object traversal are excluded. TIN surfaces additionally display read-only `GetGeneralProperties` minimum/maximum/mean elevations and `GetTerrainProperties` 2D/3D areas (drawing units squared). Surfaces with no triangles may report statistics as unavailable; no rebuild is attempted. Getters unavailable for an object are marked individually, preserving all other valid rows. Name, handle and runtime type identify each surface.
+The dark workspace uses a draggable chat splitter and a resizable dockable palette. Font size, selected tab, selected agent, provider/model/base endpoint and chat split persist. AutoCAD manages palette docking/size using a separate 0.2 palette GUID.
 
-Before scalar inspection, the reader checks `IsReferenceObject`. `IsReferencedSourceExisting`, `IsReferenceValid`, `IsReferenceStale`, `IsReferenceSubObject`, and `IsPartialReferenceObject` are skipped unless reference status is confirmed true. Native objects show “Not applicable”; unknown status shows “Not read”. Classification flags (`IsReferenceObject`, `IsReadOnlyReferenceObject`, `IsCWSReferenceObject`, `IsCWSSourceObject`) remain readable. The reference-only `PartialReferenceBoundaryManager` and native-only `Operations` collections are never traversed by this scalar inspector. This policy follows the 2026 XML documentation shipped with the official package.
+## Privacy and storage
 
-All database objects are opened `ForRead` inside a read transaction; no write access, geometry creation, transaction commit, drawing save or drawing modification commands are used. Live Autodesk objects never reach the WPF UI. The property grid is read-only. Snapshots do not update automatically after geometry edits. Empty results still display the drawing name, zero counts, and drawing summary rows. The panel displays the assembly build identity. Its diagnostics box retains timestamped stages for click, document access, command context, document lock, transaction startup, Civil surface collection, block scan and output update, followed by completion time, scanned object count, failed reads and exception details (up to 100 messages). Property getter errors appear in the property grid and diagnostics. If refresh is waiting, finish or cancel the current AutoCAD command and check the panel again.
+**No request is sent on startup, agent selection, configuration changes or local inspection.** Offline is the initial default. Every **Review & send** opens a confirmation dialog showing the exact destination and JSON body (agent instructions, user prompt and conversation). Approval is for that request only. Canceling sends nothing.
 
-## Validation
+A drawing snapshot is excluded by default. To include it, first **Inspect drawing locally**, explicitly check **Include the locally inspected drawing snapshot**, and approve the displayed JSON. The snapshot contains drawing name/path, scalar properties and diagnostics, so review it carefully. Drawing switches invalidate the snapshot and clear the opt-in. Snapshots are not live: inspect again after edits. Earlier assistant/user messages may themselves contain project details; the full outbound conversation is always in the preview.
 
-The full plugin compiles in Linux cloud using official 2026 references. This does not validate Civil 3D behavior; in-host tests remain required. See `VALIDATION.md` for build warnings.
+Keys stay in the PasswordBox/session memory, are cleared when changing providers, and are never written to settings or logs. Enter a key each Civil 3D session. No hardcoded keys, credential discovery, telemetry or automatic retries exist. Cloud providers require your own account/model access. Local endpoints use the OpenAI chat-completions format; configure a base such as `http://localhost:11434/v1/`. Only loopback HTTP or HTTPS is permitted; embedded credentials/query/fragment URLs are rejected. Redirects are disabled. Requests have a 120-second total timeout and a 4 MiB response limit. Cancellation cannot retract data already received by a service.
 
-Before accepting a release, perform these checks in Civil 3D 2026:
+Local history, non-secret settings and agent files are stored in **plain text** under `%LOCALAPPDATA%\CivilAI\0.2`. This is not encrypted storage. **New conversation** clears saved conversation history; agent files and settings remain. Imported/exported files are chosen through Windows dialogs. No conversation data is saved inside the drawing.
 
-- Download or build the plugin against the pinned official 2026 references; verify no Autodesk DLLs appear in output.
-- In a drawing with a known TIN surface and both site-associated and siteless feature lines, verify inventory names, counts and property values against Civil 3D's UI.
-- Inspect a native TIN: verify no `IsReferencedSourceExisting` exception, name/handle/type, area and available elevations. Inspect a data-reference TIN: verify reference flags and diagnostics. Test a surface with no triangles: statistics should be unavailable while valid scalar properties remain.
-- Test an empty drawing: verify its name, zero TIN/feature-line counts, drawing summary rows and completion timestamp. Test unavailable data references and xrefs: confirm diagnostics and the documented scope.
-- Click Refresh with the palette focused and with another command pending: verify a waiting status, then completion when AutoCAD becomes available. Switch drawings before execution and confirm it asks for another refresh instead of inspecting stale context.
-- Switch between two drawings, close the active drawing, and refresh; confirm stale data clears and the new drawing is inspected.
-- Close/reopen and dock/undock the palette; verify repeated commands reuse it.
-- Record DBMOD before inspection in an otherwise idle drawing; verify inspection and refresh do not change it. Close without saving and confirm no changes attributable to the plugin.
+## Architecture and tool boundary
 
-These in-host checks have not been run in the cloud environment. See `VALIDATION.md` for the actual build results.
+- `Workspace/WorkspaceControl.cs`: WPF workspace, agent editor, settings, explicit request approval and local tool actions.
+- `Workspace/WorkspaceState.cs`: local Markdown/settings/history persistence and allowlisted read-only tool registry.
+- `Workspace/Providers.cs`: `IAiProvider`, provider-specific request/response adapters and conversation composition.
+- `Plugin.cs`: AutoCAD command-context scheduling, active-document recheck and document locking.
+- `Inspection.cs` / `PropertyInspection.cs`: ForRead transactions and detached snapshots with guarded Civil getters.
 
-## CI
+The only registered tool is **`drawing.inspect`**, invoked explicitly by the user. Its structured snapshot can be included in an approved AI request. Unknown tool names, scripts and write commands are rejected. Model replies are displayed as text; **there is no autonomous tool loop, code execution or drawing modification path**. Agent Markdown cannot register tools. Any future write tool must add a separate explicit user-approval boundary; request approval in 0.2 does not authorize drawing changes.
 
-On push, pull request, or manual dispatch, `.github/workflows/build.yml` restores official packages, builds Release on `windows-latest`, runs WPF refresh/binding smoke checks, rejects any DLL other than `CivilAI.dll` in output, and uploads only that file with `actions/upload-artifact`. No licensed self-hosted runner is needed for compilation. CI does not launch Civil 3D or establish runtime compatibility. The repository's Actions settings must permit workflows to run.
+The inspector scans Civil surface IDs and local block records, deduplicates native TIN surfaces and feature lines, excludes xref block contents, and never expands block insert instances. Reference-only properties (`IsReferencedSourceExisting`, `IsReferenceValid`, `IsReferenceStale`, `IsReferenceSubObject`, `IsPartialReferenceObject`) are skipped unless `IsReferenceObject` is confirmed true. Area/elevation statistics may be unavailable on empty surfaces. No rebuild, save, geometry creation or grading APIs are invoked.
 
-## Direction
+## Exact Civil 3D 2026 acceptance steps
 
-Future milestones may introduce custom Markdown agents and landscape grading automation inspired by SketchPro. Neither agent execution nor write operations are part of 0.1.
+1. Download the successful 0.2 artifact, extract it, and **restart Civil 3D** to avoid an old DLL remaining loaded. Add its folder to trusted locations while keeping secure loading enabled. NETLOAD `CivilAI.dll`, then run `CIVILAI`. Confirm **Civil AI 0.2** and the five tabs. Do not load 0.1 and 0.2 simultaneously in the same process (they share command names).
+2. Resize/dock/float the palette, drag the chat splitter, change text size in Providers, select a tab/agent, close and reopen Civil 3D. Confirm settings and history persist. Confirm no requests occur during these actions.
+3. In Agents, **Create**, enter `# Test reviewer` and instructions, **Save**, then select it in Chat. **Edit selected**, change the text and save. Export `.md`, import it, and confirm its contents/name in the editor and selector. Put a code fence in an agent and verify it is shown/sent only as text; nothing executes.
+4. With Offline selected, enter a prompt and click **Review & send**: it must report offline without transmitting. Click **Inspect drawing locally** in an empty drawing: verify a local history entry, zero counts and drawing-summary rows in Drawing Inspector.
+5. Inspect a drawing with known native TIN surfaces and site/siteless feature lines. Compare counts/names/properties against Civil 3D. Test a data-reference TIN and an empty TIN; confirm reference guards and statistics/error rows. Record DBMOD before/after inspection in an otherwise idle drawing; it must remain unchanged.
+6. Start another AutoCAD command, then refresh from the palette. Confirm waiting/command-context stages. Finish/cancel that command. Switch/close drawings while a refresh is queued; confirm stale snapshots clear and another refresh is requested rather than inspecting a closed document.
+7. If your organization authorizes a live test, configure an approved provider/model and enter a **session key**. Compose a harmless message. Click Review & send, inspect the JSON/destination, then **Cancel**: no request should be sent and no user turn added. Repeat and explicitly approve. Confirm the reply appears and the conversation persists. Test each provider separately; a valid model and account are required. Changing providers must clear the key.
+8. After local inspection, leave snapshot inclusion unchecked and verify the preview contains no automatically attached drawing snapshot. Then opt in and confirm the preview shows the exact snapshot. Approve only if authorized to disclose that data. Switch drawings and verify the checkbox resets.
+9. Test cancellation, invalid model/key, an unavailable endpoint and Offline mode. Verify actionable diagnostics without keys or response bodies. Provider errors must not change the drawing. Verify no generated response can execute a tool or code.
+10. Restart without supplying a key: history/settings should restore, keys should be blank, and nothing should transmit automatically. Use New conversation to clear local history when finished.
+
+## Validation and limitations
+
+See `VALIDATION.md` for actual results. Cloud compilation does not establish runtime compatibility. Live provider calls, Windows WPF execution and Civil 3D 0.2 acceptance are distinct checks; do not treat a Linux build as proof of them.
+
+0.2 uses non-streaming text responses and a single saved conversation, without automatic history summarization or autonomous model tool calls. Provider requests are capped at 1 MiB; begin a new conversation if it grows too large. Markdown is edited and sent as plain text, not rendered as HTML. Native file pickers and docking must be verified in Civil 3D. No grading modifications are included.

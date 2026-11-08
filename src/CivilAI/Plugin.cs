@@ -1,6 +1,7 @@
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.Runtime;
 using Autodesk.AutoCAD.Windows;
+using CivilAI.Workspace;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 [assembly: ExtensionApplication(typeof(CivilAI.Plugin))]
@@ -12,6 +13,8 @@ public sealed class Plugin : IExtensionApplication
 {
     private static PaletteSet? palette;
     private static InspectorPanel? panel;
+    private static WorkspaceControl? workspace;
+    private static DrawingSnapshot? lastSnapshot;
 
     public void Initialize()
     {
@@ -23,13 +26,20 @@ public sealed class Plugin : IExtensionApplication
     {
         Application.DocumentManager.DocumentActivated -= DrawingChanged;
         Application.DocumentManager.DocumentToBeDestroyed -= DrawingChanged;
+        workspace?.Dispose();
+        workspace = null;
+        lastSnapshot = null;
         palette?.Dispose();
         palette = null;
         panel = null;
     }
 
-    private static void DrawingChanged(object sender, DocumentCollectionEventArgs args) =>
+    private static void DrawingChanged(object sender, DocumentCollectionEventArgs args)
+    {
+        lastSnapshot = null;
+        workspace?.SetSnapshot(null);
         panel?.InvalidateDrawing("Drawing context changed. Refresh to inspect the active drawing.");
+    }
 
     [CommandMethod("CIVILAI", CommandFlags.Modal)]
     public void Open()
@@ -43,14 +53,29 @@ public sealed class Plugin : IExtensionApplication
     {
         if (palette is not null) return;
         panel = new InspectorPanel(RequestRefreshAsync);
-        palette = new PaletteSet("Civil AI 0.1", new Guid("3F2AD61B-7191-4586-9E85-1CF30AB5A6EF"))
+        try
+        {
+            workspace = new WorkspaceControl(panel, async () =>
+            {
+                lastSnapshot = null;
+                workspace?.SetSnapshot(null);
+                await RequestRefreshAsync();
+                return lastSnapshot;
+            });
+        }
+        catch (System.Exception ex)
+        {
+            panel.ShowError("Opening agent workspace (drawing inspector remains available)", ex);
+        }
+        palette = new PaletteSet("Civil AI 0.2", new Guid("5D6BA622-E467-4433-BF96-265A286B88E8"))
         {
             Style = PaletteSetStyles.ShowAutoHideButton | PaletteSetStyles.ShowCloseButton | PaletteSetStyles.ShowPropertiesMenu,
-            MinimumSize = new System.Drawing.Size(320, 400),
-            Size = new System.Drawing.Size(440, 650),
+            MinimumSize = new System.Drawing.Size(440, 600),
+            Size = new System.Drawing.Size(640, 800),
+            KeepFocus = true,
             DockEnabled = DockSides.Left | DockSides.Right
         };
-        palette.AddVisual("Drawing inspector", panel);
+        palette.AddVisual("Agent workspace", (System.Windows.Media.Visual?)workspace ?? panel);
     }
 
     private static bool refreshing;
@@ -113,10 +138,14 @@ public sealed class Plugin : IExtensionApplication
                 snapshot = Inspection.Read(document, panel.Stage);
             }
             panel.Stage("Read transaction and document lock released; updating WPF results.");
+            lastSnapshot = snapshot;
+            workspace?.SetSnapshot(snapshot);
             panel.Show(snapshot);
         }
         catch (System.Exception ex)
         {
+            lastSnapshot = null;
+            workspace?.SetSnapshot(null);
             panel!.ShowError("Drawing inspection", ex);
             try { document?.Editor.WriteMessage($"\nCivil AI inspection failed: {ex}\n"); }
             catch (System.Exception loggingError) { panel.Stage($"Command history logging also failed: {loggingError}"); }

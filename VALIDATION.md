@@ -1,44 +1,36 @@
-# Cloud-build validation — 2026-11-05
+# Civil AI 0.2 validation — 2026-11-08
 
-## Executed
+## Baseline and scope
 
-- Built the complete updated project in Codex Cloud (Linux) with .NET SDK 8.0.427, Windows targeting enabled, and the official NuGet source `https://api.nuget.org/v3/index.json`.
-- Command: `dotnet build src/CivilAI/CivilAI.csproj -c Release --source https://api.nuget.org/v3/index.json`.
-- Result: **build succeeded, 0 errors, 2 warnings**. Both warnings are MSB3277 assembly version conflicts:
-  - `Microsoft.VisualBasic`: 10.0.0.0 vs 10.1.0.0; MSBuild selected primary 10.0.0.0.
-  - `System.Drawing`: 4.0.0.0 vs 8.0.0.0; MSBuild selected primary 4.0.0.0.
-- Warnings are not suppressed. They arise during reference resolution between framework references and Autodesk API dependencies; successful compilation does not establish their runtime impact.
-- Restored versions: AutoCAD.NET, AutoCAD.NET.Core, AutoCAD.NET.Model all 25.1.0; Civil3D.NET 13.8.280. No third-party Autodesk DLL packages or stubs were used.
-- CS0104 resolved with the explicit AutoCAD `DBObject` alias. CS0012 resolved by the explicit `AecBaseMgd` reference from Civil3D.NET.
-- Release output contains `CivilAI.dll`, `CivilAI.pdb`, and `CivilAI.deps.json`. No Autodesk DLLs or other dependency DLLs are copied. The workflow artifact includes **only CivilAI.dll**.
-- Refresh fix: replaced command-text queuing from the modeless WPF button with `ExecuteInCommandContextAsync`; rechecks the requested active document, locks it, and uses an open/close transaction with `ForRead` opens. Civil context comes from `CivilDocument.GetCivilDocument(document.Database)`.
-- Panel updates dispatch to the owning WPF thread. Empty results show drawing summary rows. Scheduling, inspection, object, block and property errors appear visibly. Object/property diagnostics are capped at 100 messages plus a truncation notice.
-- Built the corrected plugin: **0 errors, the same 2 MSB3277 warnings** described above. Confirmed the output still contains only the plugin DLL, PDB and deps.json, with no Autodesk DLLs.
-- Added Windows WPF smoke checks covering empty results, inventory selection/property updates, scan diagnostics, pending state, callback exceptions, and clearing stale properties. The smoke executable compiles on Linux; execution requires the Windows Desktop runtime and is registered in the Windows CI job. It was not executed locally.
-- No AI integration or drawing write operations were added.
+Started `civilai-v0.2` from the working `civilai-v0.1` commit `c9877be`. Stable 0.1 is preserved. The user previously confirmed 0.1 loaded in Civil 3D 2026 and detected a native TIN surface. That report is not evidence of 0.2 runtime compatibility.
 
-## Still required
+The workspace adds no grading, drawing writes, automatic model tools or executable Markdown. Existing command-context scheduling, active-document checks, ForRead transactions, reference guards and surface/feature-line detection are reused. The only tool is a user-invoked read-only `drawing.inspect` returning detached structured data.
 
-- The new GitHub-hosted Windows workflow must complete after push; the local Linux build is not evidence of a completed GitHub run. Consult Actions for its actual result and downloadable artifact.
-- Load the DLL in Civil 3D 2026 on Windows and perform the README acceptance checks: docking, native surfaces/feature lines, properties, drawing switching, refresh, and DBMOD preservation.
+## Executed in Codex Cloud (Linux)
 
-The user confirmed the previous build loaded in Civil 3D 2026 and opened the palette, but reported that Refresh showed no visible results. This Linux investigation identified an unacknowledged command-text queue and hidden diagnostics, but cannot reproduce the in-host failure or establish its exact cause. **The corrected refresh path still requires a Civil 3D 2026 retest.** No Civil 3D process is available here.
+- Full Release build with SDK **8.0.427** and pinned official **AutoCAD.NET 25.1.0 / Civil3D.NET 13.8.280**: **succeeded, 0 errors, 2 warnings**.
+- Both warnings are existing `MSB3277` reference conflicts, not suppressed:
+  - `Microsoft.VisualBasic` 10.0.0.0 vs 10.1.0.0; MSBuild selected primary 10.0.0.0.
+  - `System.Drawing` 4.0.0.0 vs 8.0.0.0; MSBuild selected primary 4.0.0.0.
+- Release output DLL check: **CivilAI.dll only**. PDB/deps metadata remain local; the workflow uploads only the plugin DLL. No Autodesk binaries are bundled.
+- `dotnet run --project tests/CivilAI.WorkspaceSmoke/CivilAI.WorkspaceSmoke.csproj -c Release`: **38 checks passed**. Coverage: Markdown create/edit/import-export round trips, size/path validation, settings/history persistence, registered read-only tools and denied write/script names, snapshot opt-in, four provider request formats and fake HTTP response/auth handling, no transmission during request preparation, endpoint validation, missing keys, HTTP-error-body redaction and cancellation. All HTTP responses are in-memory fakes; no external AI services were contacted.
+- `dotnet run --project tests/CivilAI.PropertySmoke/CivilAI.PropertySmoke.csproj -c Release`: **7 checks passed** for reference-property guards, valid property preservation and statistics-failure isolation.
+- `dotnet build tests/CivilAI.PanelSmoke/CivilAI.PanelSmoke.csproj -c Release`: **succeeded, 0 errors, 0 warnings**. This compiles actual WPF workspace, theme, editor, inspector and smoke sources; it does not execute them.
+- Attempted `dotnet run --project tests/CivilAI.PanelSmoke/CivilAI.PanelSmoke.csproj -c Release --no-build`: **could not start** because `Microsoft.WindowsDesktop.App 8.0.0` has no installed runtime on Linux. This is not a passed UI test or a Civil 3D test.
+- `git diff --check`: passed.
 
-## Click-stage diagnostic revision
+## Windows CI checks configured
 
-Source inspection confirmed the button was connected, but its old handler invoked the Autodesk-facing delegate before any WPF-only acknowledgement. `BeginRefresh`, `Show`, `ShowError`, and context invalidation could replace the diagnostic history. Neither issue proves the cause of the user's in-host blank panel.
+On `windows-latest`, the workflow builds the plugin, executes both cross-platform smoke suites and the Windows WPF suite, rejects extra output DLLs, and uploads `CivilAI-0.2-<commit>` with **CivilAI.dll only**.
 
-The named Click handler now sets visible WPF text before invoking the delegate, yields at Background dispatcher priority to allow rendering, and retains timestamped inspection stages through completion/errors. Initial panel text includes assembly informational version for loaded-build identification. Command-context entry, document recheck/lock and read-only transaction behavior are preserved.
+The WPF suite exercises actual workspace construction/theme loading, five tabs, default agent selection, create/edit/save actions, local tool invocation without provider sending, Offline mode, per-request approval rejection and acceptance with a fake provider, snapshot opt-in/reset, provider-key clearing, conversation reply display, UI settings persistence and layout. The existing inspector suite checks click-before-API ordering, output layout, empty results, property selection, pending state and error traces.
 
-The Windows smoke executable now verifies that a raised Click updates text before the callback executes, output controls have layout space, exceptions retain the initial trace, empty results and property selection update correctly. It is compiled locally and executed by Windows CI; Linux cannot execute WPF. The diagnostic revision requires Civil 3D retesting.
+A configured workflow is not evidence of a completed GitHub run. Check the run result for the pushed commit before distributing the artifact. No live provider calls or project data transmission were performed during development.
 
-## Reference-property and surface-statistics correction
+## In-host checks still required
 
-The user confirmed native TIN detection but reported `IsReferencedSourceExisting` throwing on a native entity. Inspected the official Civil3D.NET 13.8.280 `AeccDbMgd.xml`: reference-validity, stale, source-existing and subobject flags require reference context. The partial-reference flag is conservatively gated too; reference/CWS classification flags remain readable. Non-scalar reference managers/operation collections remain excluded.
+Run the complete acceptance checklist in README.md inside **Autodesk Civil 3D 2026 on Windows**. Specifically verify keyboard focus and docking, Markdown native file pickers, theme/readability at different palette sizes, settings/history restoration, queued refresh and drawing switching, TIN/feature-line inventory and unchanged DBMOD, request preview/cancel, and provider responses only with an authorized account/test payload.
 
-The reader checks `IsReferenceObject` before optional reference properties, skips guarded getters for false/unknown status, and catches failures separately for each property. General surface statistics supply min/max/mean elevation; terrain statistics supply 2D/3D areas. Empty/unavailable statistics produce individual diagnostic rows without losing the surface or other properties. No rebuild or write API was added.
+The provider adapters are tested against representative fake HTTP contracts. Account/model availability, live API behavior, local-server compatibility and corporate proxy policies are not verified. Responses are non-streaming text. There is one saved conversation and no autonomous agent execution. Keys remain session-only; persisted files are plaintext, not encrypted storage.
 
-- Full plugin build with official pinned packages: **0 errors, 2 existing MSB3277 warnings** (`Microsoft.VisualBasic` and `System.Drawing` version conflicts described above).
-- Executed cross-platform property smoke checks: **7 passed**, verifying all five reference-only getters are skipped for native/unknown objects, invoked on reference objects, normal properties survive a throwing getter, diagnostics are retained, and one statistics failure does not stop another read. These checks exercise the real property-reader helper using probe objects, not Autodesk runtime objects.
-- WPF smoke project still compiles; execution remains a Windows CI check.
-- Native and data-reference surface statistics and feature-line inspection must still be retested in Civil 3D 2026.
+**Do not claim 0.2 runtime compatibility until these Civil 3D tests have passed.**
