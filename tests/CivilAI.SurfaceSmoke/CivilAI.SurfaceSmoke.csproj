@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
 <ItemGroup><Compile Include="../../src/CivilAI/SurfaceStatistics.cs" Link="SurfaceStatistics.cs"/><Compile Include="../../src/CivilAI/DrawingSnapshot.cs" Link="DrawingSnapshot.cs"/></ItemGroup>
-<ItemGroup><Compile Include="../../src/CivilAI/SurfaceSummary.cs" Link="SurfaceSummary.cs" /></ItemGroup><ItemGroup><Compile Include="../../src/CivilAI/TriangleSlope.cs" Link="TriangleSlope.cs" /></ItemGroup></Project>
+<ItemGroup><Compile Include="../../src/CivilAI/SurfaceSummary.cs" Link="SurfaceSummary.cs" /></ItemGroup><ItemGroup><Compile Include="../../src/CivilAI/TriangleSlope.cs" Link="TriangleSlope.cs" /></ItemGroup><ItemGroup><PackageReference Include="NetTopologySuite" Version="[2.6.0]" /></ItemGroup><ItemGroup><Compile Include="../../src/CivilAI/AreaGeometry.cs" Link="AreaGeometry.cs" /></ItemGroup></Project>
+
 

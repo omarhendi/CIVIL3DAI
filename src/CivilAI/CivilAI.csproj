@@ -6,8 +6,8 @@
     <PlatformTarget>x64</PlatformTarget>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.3.4</Version>
-    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <Version>0.3.5</Version>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
     <!-- Official Autodesk 2026 APIs. Compile assets only: the host supplies runtime DLLs. -->
@@ -23,6 +23,7 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
-</Project>
+<ItemGroup><PackageReference Include="NetTopologySuite" Version="[2.6.0]" /></ItemGroup></Project>
+
 
 

@@ -25,18 +25,21 @@ jobs:
         run: dotnet run --project tests/CivilAI.WorkspaceSmoke/CivilAI.WorkspaceSmoke.csproj --configuration Release
       - name: Validate WPF workspace, refresh states and bindings
         run: dotnet run --project tests/CivilAI.PanelSmoke/CivilAI.PanelSmoke.csproj --configuration Release
-      - name: Verify output contains no dependency DLLs
+      - name: Verify only plugin and local geometry library are packaged
         shell: pwsh
         run: |
           $output = 'src/CivilAI/bin/Release/net8.0-windows'
           if (!(Test-Path "$output/CivilAI.dll")) { throw 'CivilAI.dll was not produced' }
-          $dependencies = @(Get-ChildItem $output -Recurse -Filter *.dll | Where-Object { $_.Name -ne 'CivilAI.dll' })
+          $dependencies = @(Get-ChildItem $output -Recurse -Filter *.dll | Where-Object { $_.Name -notin @('CivilAI.dll', 'NetTopologySuite.dll') })
           if ($dependencies.Count -gt 0) { throw "Unexpected dependency DLLs: $($dependencies.Name -join ', ')" }
-      - name: Upload CivilAI.dll only
+      - name: Upload plugin and geometry library
         uses: actions/upload-artifact@v4
         with:
           name: CivilAI-0.3-${{ github.sha }}
-          path: src/CivilAI/bin/Release/net8.0-windows/CivilAI.dll
+          path: |
+            src/CivilAI/bin/Release/net8.0-windows/CivilAI.dll
+            src/CivilAI/bin/Release/net8.0-windows/NetTopologySuite.dll
           if-no-files-found: error
+
 
 
