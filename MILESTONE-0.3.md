@@ -18,3 +18,13 @@ Provider sends are blocked in this milestone even if a provider or snapshot is s
 Rollback: close Civil 3D, restart, and NETLOAD the retained 0.2 DLL. Its branch and settings remain unchanged.
 
 Official API reference: https://help.autodesk.com/cloudhelp/2026/ENU/Civil3D-API/files/html/13d8bd3a-56c1-85f9-03dd-8750b123dd0a.htm
+
+## 0.3.1 summary update
+
+Selecting a TIN opens Surface Summary by default; All Properties retains the raw inspector. Slopes are displayed as rise/run × 100 percent, with five decimal places to preserve small slopes. Elevations and areas explicitly retain drawing units (and drawing units squared); no unit conversion or assumption of metres is made. Unavailable statistics remain unavailable and empty/inaccessible surface errors use a plain-language explanation.
+
+### User-observed Civil 3D 2026 acceptance, 2026-11-08
+
+On the original 0.3 build: one populated TIN's elevation extremes, plan/spatial area and slope statistics matched Civil 3D at displayed precision. DBMOD remained 29 across refresh. Switching to a blank drawing cleared prior results and reported zero surfaces/feature lines. Review & send displayed the offline block. An empty TIN returned unavailable elevation/terrain statistics without a crash. These observations do not establish network-level monitoring or universal drawing compatibility. Broken/stale references and switching while a refresh is queued remain untested.
+
+The summary update needs a short in-host visual check after deployment. Keep the fallback DLL. Download the latest successful artifact on civilai-v0.3, close Civil 3D, then load the replacement DLL in a fresh session.

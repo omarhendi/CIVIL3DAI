@@ -19,7 +19,9 @@ internal static class Program
         var status = controls.OfType<TextBlock>().Single();
         var diagnostics = controls.OfType<TextBox>().Single();
         var list = controls.OfType<ListBox>().Single();
-        var properties = controls.OfType<DataGrid>().Single();
+        var detailTabs = controls.OfType<TabControl>().Single();
+        var summary = (DataGrid)((TabItem)detailTabs.Items[0]).Content;
+        var properties = (DataGrid)((TabItem)detailTabs.Items[1]).Content;
         var button = controls.OfType<Button>().Single();
         void Check(bool condition, string message)
         {
@@ -37,12 +39,14 @@ internal static class Program
         var second = new DrawingItem("Feature line", "Edge", new[] { new PropertyValue("Name", "Edge") });
         panel.Show(new DrawingSnapshot("Site.dwg", new[] { first, second }, 1, 8, new[] { "Object read failed" }));
         Check(list.Items.Count == 2 && ReferenceEquals(properties.ItemsSource, first.Properties), "New inventory automatically selects and displays first object's properties");
+        Check(detailTabs.SelectedIndex == 0 && summary.Items.Count > 0, "Surface selection opens summary");
         list.SelectedIndex = 1;
         Check(ReferenceEquals(properties.ItemsSource, second.Properties), "Changing selection updates property rows");
         Check(diagnostics.Text.Contains("Object read failed"), "Partial inspection failures are visible");
 
         panel.BeginRefresh("Waiting for command context");
         Check(!button.IsEnabled && list.Items.Count == 0 && status.Text.Contains("Waiting"), "Pending refresh disables button and clears stale inventory");
+        Check(summary.Items.Count == 0, "Refresh clears stale surface summary");
         panel.EndRefresh();
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Check(calls == 0 && status.Text.Contains("Refresh clicked") && diagnostics.Text.Contains("Autodesk API has not been accessed yet"), "Click event writes diagnostics before invoking the API delegate");

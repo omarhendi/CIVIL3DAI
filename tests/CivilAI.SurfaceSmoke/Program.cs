@@ -18,3 +18,12 @@ Check(rows.Count(x => x.Value.StartsWith("Unavailable")) == 4);
 Check(rows.Count(x => x.Name == "Diagnostic") == 2);
 Check(!rows.Any(x => x.Value.Contains("secret")));
 Console.WriteLine("Surface statistics checks passed.");
+var summary = SurfaceSummary.Create(new DrawingItem("TIN surface", "Plane", new[] {
+    new PropertyValue("MinimumGradeOrSlope (API raw)", "0.0000413010296311"),
+    new PropertyValue("MaximumGradeOrSlope (API raw)", "1.70262928212"),
+    new PropertyValue("MeanGradeOrSlope (API raw)", "0.128970485874") }));
+Check(summary.Single(p => p.Name == "Minimum slope").Value == "0.00413 %");
+Check(summary.Single(p => p.Name == "Maximum slope").Value == "170.26293 %");
+Check(summary.Single(p => p.Name == "Mean slope").Value == "12.89705 %");
+Check(summary.Single(p => p.Name == "Minimum elevation").Value.StartsWith("Unavailable"));
+Console.WriteLine("Surface summary conversion and missing-data checks passed.");

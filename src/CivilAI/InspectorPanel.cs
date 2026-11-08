@@ -17,6 +17,8 @@ internal sealed class InspectorPanel : UserControl
     private readonly ListBox objects = new() { DisplayMemberPath = nameof(DrawingItem.Label), Margin = new Thickness(8) };
     private readonly DataGrid properties = new() { IsReadOnly = true, AutoGenerateColumns = false, CanUserAddRows = false, Margin = new Thickness(8) };
 
+    private readonly DataGrid summary = new() { Name = "SurfaceSummary", IsReadOnly = true, AutoGenerateColumns = false, CanUserAddRows = false, Margin = new Thickness(8) };
+    private readonly TabControl details = new();
     private readonly Func<Task> refresh;
 
     public InspectorPanel(Func<Task> refresh)
@@ -30,16 +32,28 @@ internal sealed class InspectorPanel : UserControl
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(2, GridUnitType.Star) });
+        summary.Columns.Add(new DataGridTextColumn { Header = "Surface summary", Binding = new System.Windows.Data.Binding("Name") });
+        var valueStyle = new Style(typeof(TextBlock));
+        valueStyle.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap));
+        summary.Columns.Add(new DataGridTextColumn { Header = "Value", Binding = new System.Windows.Data.Binding("Value"), Width = new DataGridLength(1, DataGridLengthUnitType.Star), ElementStyle = valueStyle });
+        details.Items.Add(new TabItem { Header = "Surface Summary", Content = summary });
+        details.Items.Add(new TabItem { Header = "All Properties", Content = properties });
         var row = 0;
         button.Click += RefreshClicked;
-        foreach (var control in new UIElement[] { button, status, diagnostics, objects, properties })
+        foreach (var control in new UIElement[] { button, status, diagnostics, objects, details })
         {
             Grid.SetRow(control, row++);
             root.Children.Add(control);
         }
         properties.Columns.Add(new DataGridTextColumn { Header = "Property", Binding = new System.Windows.Data.Binding("Name") });
         properties.Columns.Add(new DataGridTextColumn { Header = "Value", Binding = new System.Windows.Data.Binding("Value"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-        objects.SelectionChanged += (_, _) => properties.ItemsSource = (objects.SelectedItem as DrawingItem)?.Properties;
+        objects.SelectionChanged += (_, _) =>
+        {
+            var selected = objects.SelectedItem as DrawingItem;
+            properties.ItemsSource = selected?.Properties;
+            summary.ItemsSource = selected is null ? null : SurfaceSummary.Create(selected);
+            details.SelectedIndex = selected?.Kind == "TIN surface" ? 0 : 1;
+        };
         Content = root;
         Clear($"Civil AI panel ready. Build {BuildIdentity}. Click Refresh to inspect the active drawing.");
     }
@@ -81,6 +95,7 @@ internal sealed class InspectorPanel : UserControl
     {
         objects.ItemsSource = null;
         properties.ItemsSource = null;
+        summary.ItemsSource = null;
         status.Text = message;
         diagnostics.Text = message + "\n";
     });
@@ -89,6 +104,7 @@ internal sealed class InspectorPanel : UserControl
     {
         objects.ItemsSource = null;
         properties.ItemsSource = null;
+        summary.ItemsSource = null;
         Stage(message);
     });
 
@@ -96,6 +112,7 @@ internal sealed class InspectorPanel : UserControl
     {
         objects.ItemsSource = null;
         properties.ItemsSource = null;
+        summary.ItemsSource = null;
         button.IsEnabled = false;
         Stage(message);
     });
@@ -106,6 +123,7 @@ internal sealed class InspectorPanel : UserControl
     {
         objects.ItemsSource = null;
         properties.ItemsSource = null;
+        summary.ItemsSource = null;
         Stage($"{stage} failed: {exception.GetBaseException().Message}");
         diagnostics.AppendText(exception + "\n");
         diagnostics.ScrollToEnd();
@@ -122,15 +140,16 @@ internal sealed class InspectorPanel : UserControl
         diagnostics.ScrollToEnd();
         objects.ItemsSource = null;
         properties.ItemsSource = null;
+        summary.ItemsSource = null;
         objects.ItemsSource = snapshot.Items;
         if (snapshot.Items.Count > 0) objects.SelectedIndex = 0;
-        else properties.ItemsSource = new[]
+        else { details.SelectedIndex = 1; properties.ItemsSource = new[]
         {
             new PropertyValue("Drawing", snapshot.Drawing),
             new PropertyValue("TIN surfaces", "0"),
             new PropertyValue("Feature lines", "0"),
             new PropertyValue("Objects scanned", snapshot.Scanned.ToString()),
             new PropertyValue("Failed object reads", snapshot.Unavailable.ToString())
-        };
+        }; }
     });
 }
