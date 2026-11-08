@@ -10,6 +10,8 @@
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
+    <Page Remove="Workspace/DarkTheme.xaml" />
+    <EmbeddedResource Include="Workspace/DarkTheme.xaml" LogicalName="CivilAI.DarkTheme.xaml" />
     <!-- Official Autodesk 2026 APIs. Compile assets only: the host supplies runtime DLLs. -->
     <PackageReference Include="AutoCAD.NET" Version="[25.1.0]" IncludeAssets="compile" PrivateAssets="all" />
     <PackageReference Include="Civil3D.NET" Version="[13.8.280]" GeneratePathProperty="true" IncludeAssets="none" PrivateAssets="all" />

@@ -62,7 +62,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         key.Name = "SessionApiKey";
         includeDrawing.Name = "IncludeDrawingSnapshot";
         markdown.Name = "AgentMarkdown";
-        Resources = Theme();
+        Resources = DarkTheme.Create();
         Background = Brush("#151923");
         Foreground = Brush("#E6EAF2");
         FontFamily = new FontFamily("Segoe UI");
@@ -106,23 +106,6 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         try { return read(); } catch (Exception ex) { Error("Loading " + label, ex); return fallback; }
     }
     private static SolidColorBrush Brush(string hex) => (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
-    private static ResourceDictionary Theme() => (ResourceDictionary)XamlReader.Parse("""
-      <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-        <Style TargetType="TextBox"><Setter Property="Background" Value="#202735"/><Setter Property="Foreground" Value="#E6EAF2"/><Setter Property="CaretBrush" Value="White"/><Setter Property="BorderBrush" Value="#44516A"/><Setter Property="Padding" Value="7"/></Style>
-        <Style TargetType="PasswordBox"><Setter Property="Background" Value="#202735"/><Setter Property="Foreground" Value="White"/><Setter Property="CaretBrush" Value="White"/><Setter Property="Padding" Value="7"/></Style>
-        <Style TargetType="Button"><Setter Property="Background" Value="#28374C"/><Setter Property="Foreground" Value="#F2F6FC"/><Setter Property="Margin" Value="4"/><Setter Property="Padding" Value="10,7"/>
-          <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Box" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Box" Property="Background" Value="#385570"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="Box" Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
-        </Style>
-        <Style TargetType="ComboBox"><Setter Property="Foreground" Value="Black"/><Setter Property="Background" Value="White"/><Setter Property="Padding" Value="6"/></Style>
-        <Style TargetType="ListBox"><Setter Property="Background" Value="#191F2B"/><Setter Property="Foreground" Value="#E6EAF2"/><Setter Property="BorderBrush" Value="#344158"/></Style>
-        <Style TargetType="CheckBox"><Setter Property="Foreground" Value="#E6EAF2"/></Style>
-        <Style TargetType="TabControl"><Setter Property="Background" Value="#151923"/><Setter Property="BorderBrush" Value="#344158"/></Style>
-        <Style TargetType="TabItem"><Setter Property="Background" Value="#202735"/><Setter Property="Foreground" Value="#AAB8CF"/><Setter Property="Padding" Value="8"/><Style.Triggers><Trigger Property="IsSelected" Value="True"><Setter Property="Foreground" Value="Black"/></Trigger></Style.Triggers></Style>
-        <Style TargetType="DataGrid"><Setter Property="Background" Value="#191F2B"/><Setter Property="Foreground" Value="#E6EAF2"/><Setter Property="RowBackground" Value="#202735"/><Setter Property="AlternatingRowBackground" Value="#273143"/></Style>
-        <Style TargetType="DataGridCell"><Setter Property="Foreground" Value="#E6EAF2"/><Setter Property="Background" Value="Transparent"/></Style>
-        <Style TargetType="DataGridColumnHeader"><Setter Property="Background" Value="#344158"/><Setter Property="Foreground" Value="White"/></Style>
-      </ResourceDictionary>
-      """);
     private Button ActionButton(string label, Func<Task> action)
     {
         var button = new Button { Content = label };

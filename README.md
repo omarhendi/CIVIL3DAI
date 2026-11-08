@@ -27,7 +27,7 @@ Run `CIVILAI` after NETLOAD. The dockable palette contains:
 - **Drawing Inspector**: the working native TIN surface and feature-line inventory with name, handle, type, area/elevation information, reference guards, property-level failure isolation, empty-drawing output and stage diagnostics. `CIVILAIREFRESH` remains available.
 - **Diagnostics**: bounded session log of workspace actions and safe errors. Provider bodies and keys are never logged.
 
-The dark workspace uses a draggable chat splitter and a resizable dockable palette. Font size, selected tab, selected agent, provider/model/base endpoint and chat split persist. AutoCAD manages palette docking/size using a separate 0.2 palette GUID.
+The embedded dark-theme dictionary explicitly colors labels, informational TextBlocks, inputs, dropdowns, selections and disabled controls; theme regression checks enforce at least 4.5:1 text contrast for its palette. The dark workspace uses a draggable chat splitter and a resizable dockable palette. Font size, selected tab, selected agent, provider/model/base endpoint and chat split persist. AutoCAD manages palette docking/size using a separate 0.2 palette GUID.
 
 ## Privacy and storage
 

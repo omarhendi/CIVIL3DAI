@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using CivilAI;
 using CivilAI.Workspace;
 
@@ -58,11 +59,28 @@ internal static class WorkspaceChecks
             Check(Named<CheckBox>("IncludeDrawingSnapshot").IsChecked == false, "Drawing switch clears snapshot opt-in");
             tabs.SelectedIndex = 2;
             Check(store.LoadSettings().SelectedTab == 2 && store.LoadSettings().Provider == "Local", "Tab and provider UI settings persist");
+            selector.ApplyTemplate();
+            var selectionPresenter = selector.Template.FindName("SelectionPresenter", selector) as ContentPresenter;
+            Check(selectionPresenter?.Content is not null, "Dark ComboBox template preserves selected agent display");
             for (var tab = 0; tab < tabs.Items.Count; tab++)
             {
                 tabs.SelectedIndex = tab;
                 workspace.Measure(new Size(640, 800)); workspace.Arrange(new Rect(0, 0, 640, 800)); workspace.UpdateLayout();
                 Check(workspace.ActualHeight == 800 && tabs.ActualHeight > 0, $"Workspace tab {tab} lays out at palette size");
+                foreach (var text in Descendants(workspace).OfType<TextBlock>())
+                    Check(Contrast(text.Foreground, (Brush)workspace.Resources["SelectedBrush"]) >= 4.5,
+                        $"Tab {tab} informational text stays light independently of selected-tab inheritance");
+                foreach (var control in controls.OfType<Control>().Where(c => c is TextBox or PasswordBox or ComboBox or System.Windows.Controls.Button or DataGrid or TabItem))
+                {
+                    control.ApplyTemplate();
+                    Check(Contrast(control.Foreground, control.Background ?? workspace.Background) >= 4.5,
+                        $"{control.GetType().Name} normal/selected text has AA contrast");
+                    var enabled = control.IsEnabled;
+                    control.IsEnabled = false;
+                    Check(Contrast(control.Foreground, control.Background ?? workspace.Background) >= 4.5,
+                        $"{control.GetType().Name} disabled text has AA contrast");
+                    control.IsEnabled = enabled;
+                }
             }
         }
         finally { workspace.Dispose(); Directory.Delete(path, true); }
@@ -73,6 +91,18 @@ internal static class WorkspaceChecks
         // Logical tree includes TabItem content even when tabs are not currently selected.
         foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
             foreach (var node in Descendants(child)) yield return node;
+    }
+    private static double Contrast(Brush foreground, Brush background)
+    {
+        static double Light(Brush brush)
+        {
+            if (brush is not SolidColorBrush color || color.Color.A != 255)
+                throw new InvalidOperationException("Expected opaque explicit theme brush.");
+            static double Linear(byte channel) { var value = channel / 255d; return value <= .04045 ? value / 12.92 : Math.Pow((value + .055) / 1.055, 2.4); }
+            return .2126 * Linear(color.Color.R) + .7152 * Linear(color.Color.G) + .0722 * Linear(color.Color.B);
+        }
+        var a = Light(foreground); var b = Light(background);
+        return (Math.Max(a, b) + .05) / (Math.Min(a, b) + .05);
     }
     private static void Check(bool condition, string message)
     {

@@ -34,3 +34,14 @@ Run the complete acceptance checklist in README.md inside **Autodesk Civil 3D 20
 The provider adapters are tested against representative fake HTTP contracts. Account/model availability, live API behavior, local-server compatibility and corporate proxy policies are not verified. Responses are non-streaming text. There is one saved conversation and no autonomous agent execution. Keys remain session-only; persisted files are plaintext, not encrypted storage.
 
 **Do not claim 0.2 runtime compatibility until these Civil 3D tests have passed.**
+
+## Dark-theme contrast correction
+
+Source inspection found no explicit TextBlock/Label foreground and a selected TabItem foreground of Black. Tab content could inherit that black foreground over the workspace's dark surfaces. The embedded `Workspace/DarkTheme.xaml` now supplies explicit light text, including informational labels and selected tabs, with consistent dark input, dropdown, selection and disabled surfaces. Button opacity fading was removed; focus borders and readable hover/selection/disabled colors are explicit. The request-review window shares the same dictionary. Layout structure and provider/tool behavior are unchanged.
+
+- `dotnet run --project tests/CivilAI.ThemeSmoke/CivilAI.ThemeSmoke.csproj -c Release`: **44 passed**. Checks palette contrast, explicit control foregrounds, foreground trigger values, focus/hover/disabled declarations and absence of opacity dimming. All normal/muted text colors exceed WCAG AA 4.5:1 against the tested surfaces; lowest ratio is **4.79:1**, normal text on selected surface is **6.36:1**.
+- Full plugin Release build: **0 errors, 2 existing MSB3277 warnings** (Microsoft.VisualBasic and System.Drawing version conflicts). The XAML dictionary is an embedded resource; the artifact remains a single CivilAI.dll.
+- WPF smoke executable: **compiles with 0 errors and 0 warnings**. Extended Windows checks validate resolved informational text on all five tabs, normal/selected/disabled control foreground/background contrast, and the selected agent display in the custom ComboBox template. Windows tests load the actual embedded XAML, not a duplicate palette.
+- Both the cross-platform contrast checks and WPF checks are in the existing GitHub Actions workflow before artifact upload. Their Windows execution cannot be claimed from this Linux environment.
+
+Civil 3D retest: restart, NETLOAD the new DLL, inspect all five tabs and the request-review dialog; check Providers field labels/storage note, agent instructions/status text, dropdown choices, selected tab content, selected grid rows, disabled Cancel, hover and keyboard focus. Confirm dropdown selection, header sorting/resizing, inspection and provider approval behavior remain unchanged. No live provider request is needed for the contrast checks.
