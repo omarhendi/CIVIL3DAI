@@ -1,3 +1,7 @@
+# Civil AI 0.3 — offline surface intelligence
+
+See [milestone scope and deployment steps](MILESTONE-0.3.md). Provider sending is disabled in this branch. The documentation below describes the preserved v0.2 baseline; its live-provider instructions do not apply to v0.3.
+
 # Civil AI 0.2 — Civil 3D agent workspace
 
 Native x64 WPF/.NET 8 plugin for Autodesk Civil 3D 2026. Branch `civilai-v0.2` develops the workspace; stable `civilai-v0.1` is preserved. Grading and drawing modifications are **not implemented**.
@@ -69,3 +73,4 @@ The inspector scans Civil surface IDs and local block records, deduplicates nati
 See `VALIDATION.md` for actual results. Cloud compilation does not establish runtime compatibility. Live provider calls, Windows WPF execution and Civil 3D 0.2 acceptance are distinct checks; do not treat a Linux build as proof of them.
 
 0.2 uses non-streaming text responses and a single saved conversation, without automatic history summarization or autonomous model tool calls. Provider requests are capped at 1 MiB; begin a new conversation if it grows too large. Markdown is edited and sent as plain text, not rendered as HTML. Native file pickers and docking must be verified in Civil 3D. No grading modifications are included.
+
