@@ -62,6 +62,7 @@ public sealed partial class Plugin : IExtensionApplication
         {
             DrawingTask.FindSlopes => "CIVILAIFINDSLOPES ",
             DrawingTask.AssessArea => "CIVILAIAREA ",
+            DrawingTask.CreateTin => "CIVILAICREATETIN ",
             _ => throw new ArgumentOutOfRangeException(nameof(task))
         };
         document.SendStringToExecute(command, true, false, true);
@@ -174,7 +175,3 @@ public sealed partial class Plugin : IExtensionApplication
         finally { panel?.EndRefresh(); }
     }
 }
-
-
-
-

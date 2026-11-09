@@ -77,7 +77,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         var root = new DockPanel();
         var header = new StackPanel { Margin = new Thickness(10, 8, 10, 0) };
         header.Children.Add(new TextBlock { Text = "CIVIL AI  /  0.3", FontSize = 21, FontWeight = FontWeights.SemiBold, Foreground = Brush("#70D8D0") });
-        header.Children.Add(new TextBlock { Text = "Agent workspace · Read-only drawing tools", Margin = new Thickness(0, 3, 0, 6) });
+        header.Children.Add(new TextBlock { Text = "Agent workspace · Drawing tasks", Margin = new Thickness(0, 3, 0, 6) });
         DockPanel.SetDock(header, Dock.Top); root.Children.Add(header);
         DockPanel.SetDock(state, Dock.Bottom); root.Children.Add(state);
         root.Children.Add(tabs); Content = root;
@@ -100,7 +100,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         tabs.SelectedIndex = Math.Clamp(settings.SelectedTab, 0, tabs.Items.Count - 1);
         tabs.SelectionChanged += (_, e) => { if (e.Source == tabs) SaveSettings(); };
         agentSelector.SelectionChanged += (_, _) => SaveSettings();
-        Log("Workspace ready. Markdown is never executed. No write tools or background network requests exist.");
+        Log("Workspace ready. Markdown is never executed. Drawing edits require confirmation in Civil 3D.");
     }
 
     private T Load<T>(Func<T> read, T fallback, string label)
@@ -228,7 +228,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         var task = DrawingTaskRequest.Parse(request);
         if (task is null)
         {
-            Log("Try “inspect the drawing”, “find steep triangles”, or “assess pavement slopes”.");
+            Log("Try “inspect the drawing”, “find steep triangles”, or “create a proposed TIN from selected feature lines”.");
             return;
         }
 
@@ -245,7 +245,8 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
             }
 
             launchDrawingTask(task.Value);
-            Log("Follow the prompts in the Civil 3D command line. Results appear in Drawing Inspector.");
+            Log("Follow the prompts in the Civil 3D command line.");
+            if (task == DrawingTask.CreateTin) return;
         }
 
         tabs.SelectedIndex = 3;
@@ -348,5 +349,3 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         SaveSettings(); disposed = true; pending?.Cancel(); (provider as IDisposable)?.Dispose(); key.Clear();
     }
 }
-
-

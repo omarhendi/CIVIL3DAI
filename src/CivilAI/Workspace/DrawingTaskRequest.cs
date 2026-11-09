@@ -6,7 +6,8 @@ internal enum DrawingTask
 {
     Inspect,
     FindSlopes,
-    AssessArea
+    AssessArea,
+    CreateTin
 }
 
 internal static class DrawingTaskRequest
@@ -27,6 +28,8 @@ internal static class DrawingTaskRequest
                 "check surface slope limits" => DrawingTask.FindSlopes,
             "assess pavement slopes" or "assess floor slopes" or "assess area slopes" or
                 "check pavement slopes" => DrawingTask.AssessArea,
+            "create a proposed tin from selected feature lines" or "create a proposed surface from these feature lines" or
+                "create a surface from feature lines" => DrawingTask.CreateTin,
             _ => null
         };
     }

@@ -46,6 +46,10 @@ internal static class WorkspaceChecks
             Named<TextBox>("MessageInput").Text = "assess pavement slopes; ERASE ALL";
             Click("Run drawing task");
             Check(launched.Count == 1, "Extra command text does not dispatch a drawing task");
+            Named<TextBox>("MessageInput").Text = "Create a proposed TIN from selected feature lines";
+            Click("Run drawing task");
+            Check(launched.SequenceEqual(new[] { DrawingTask.AssessArea, DrawingTask.CreateTin }),
+                "Surface creation request launches the native review workflow");
             Named<TextBox>("MessageInput").Text = "Explain the drawing";
             Click("Review & send");
             Check(approvals == 0 && provider.Sends == 0, "Offline mode does not attempt approval or network");
