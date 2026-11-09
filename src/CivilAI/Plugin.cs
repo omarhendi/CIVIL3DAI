@@ -15,6 +15,7 @@ public sealed partial class Plugin : IExtensionApplication
     private static InspectorPanel? panel;
     private static WorkspaceControl? workspace;
     private static DrawingSnapshot? lastSnapshot;
+    private static (Document Document, DrawingTask Task, double Meters, long QueuedAt)? pendingDistance;
 
     public void Initialize()
     {
@@ -28,6 +29,7 @@ public sealed partial class Plugin : IExtensionApplication
         Application.DocumentManager.DocumentToBeDestroyed -= DrawingChanged;
         workspace?.Dispose();
         workspace = null;
+        pendingDistance = null;
         ClearTriangleLocations();
         lastSnapshot = null;
         palette?.Dispose();
@@ -37,6 +39,7 @@ public sealed partial class Plugin : IExtensionApplication
 
     private static void DrawingChanged(object sender, DocumentCollectionEventArgs args)
     {
+        pendingDistance = null;
         ClearTriangleLocations();
         lastSnapshot = null;
         workspace?.SetSnapshot(null);
@@ -50,7 +53,7 @@ public sealed partial class Plugin : IExtensionApplication
         palette!.Visible = true;
     }
 
-    private static void LaunchDrawingTask(DrawingTask task)
+    private static void LaunchDrawingTask(DrawingTask task, double? distanceMeters)
     {
         var document = Application.DocumentManager.MdiActiveDocument
             ?? throw new InvalidOperationException("Open a drawing first.");
@@ -67,7 +70,17 @@ public sealed partial class Plugin : IExtensionApplication
             DrawingTask.OffsetLevels => "CIVILAIOFFSETLEVELS ",
             _ => throw new ArgumentOutOfRangeException(nameof(task))
         };
-        document.SendStringToExecute(command, true, false, true);
+        pendingDistance = distanceMeters is double meters ? (document, task, meters, Environment.TickCount64) : null;
+        try { document.SendStringToExecute(command, true, false, true); }
+        catch { pendingDistance = null; throw; }
+    }
+
+    private static double? ConsumeTaskDistance(Document document, DrawingTask task)
+    {
+        var pending = pendingDistance;
+        pendingDistance = null;
+        return pending is { } value && value.Document == document && value.Task == task &&
+            Environment.TickCount64 - value.QueuedAt < 10000 ? value.Meters : null;
     }
 
     private static void EnsurePanel()

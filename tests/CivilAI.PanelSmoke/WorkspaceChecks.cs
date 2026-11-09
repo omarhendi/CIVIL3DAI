@@ -13,10 +13,11 @@ internal static class WorkspaceChecks
         var snapshot = new DrawingSnapshot("Test.dwg", Array.Empty<DrawingItem>(), 0, 0, Array.Empty<string>());
         var toolCalls = 0;
         var launched = new List<DrawingTask>();
+        double? launchedDistance = null;
         var provider = new ProbeProvider();
         var inspector = new InspectorPanel(() => Task.CompletedTask);
         var workspace = new WorkspaceControl(inspector,
-            () => { toolCalls++; return Task.FromResult<DrawingSnapshot?>(snapshot); }, store, provider, launched.Add);
+            () => { toolCalls++; return Task.FromResult<DrawingSnapshot?>(snapshot); }, store, provider, (task, distance) => { launched.Add(task); launchedDistance = distance; });
         try
         {
             var controls = Descendants(workspace).ToArray();
@@ -79,10 +80,17 @@ internal static class WorkspaceChecks
             Send("The surface we created needs a boundary because it has triangles we don't need.");
             Check(launched.Count == 2 && launched[^1] == DrawingTask.AddTinBoundary,
                 "Boundary requests open the native workflow for an existing TIN");
-            provider.Response = """{"action":"spot_elevations","message":"I will open the spot elevation grid."}""";
-            Send("Give me spot elevations every 1 meter on this surface.");
-            Check(launched.Count == 3 && launched[^1] == DrawingTask.SpotElevations,
-                "Spot elevation requests open the native label workflow");
+            provider.Response = """{"action":"ask","message":"How far apart?","options":["0.5 m","1 m","2 m"]}""";
+            Send("Give me spot elevations on this surface.");
+            Check(launched.Count == 2, "A clarification stays in Chat");
+            var option = Descendants(workspace).OfType<Button>().Single(b => b.Content as string == "2 m");
+            provider.Response = """{"action":"spot_elevations","message":"I will use a 2 m grid.","distance_meters":2}""";
+            option.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(launched.Count == 3 && launched[^1] == DrawingTask.SpotElevations && launchedDistance == 2 &&
+                provider.LastMessages[^1].Content == "2 m" &&
+                provider.LastMessages.Any(m => m.Role == "assistant" && m.Content.Contains("How far apart?")) &&
+                !Descendants(workspace).OfType<Button>().Any(b => b.Content as string == "2 m"),
+                "A quick reply keeps context and passes the selected spacing to the native task");
             tabs.SelectedIndex = 2;
             Check(store.LoadSettings().SelectedTab == 2 && store.LoadSettings().Provider == "Local", "Tab and provider UI settings persist");
             for (var tab = 0; tab < tabs.Items.Count; tab++)

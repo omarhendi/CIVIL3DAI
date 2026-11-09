@@ -2,6 +2,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
+using CivilAI.Workspace;
 using Autodesk.Civil.DatabaseServices;
 using NetTopologySuite.Geometries;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
@@ -16,6 +17,7 @@ public sealed partial class Plugin
         var document = Application.DocumentManager.MdiActiveDocument;
         if (document is null) return;
         var editor = document.Editor;
+        var requestedMeters = ConsumeTaskDistance(document, DrawingTask.OffsetLevels);
         try
         {
             var edge = editor.GetEntity("\nSelect the original reference edge (line, polyline, or feature line): ");
@@ -37,28 +39,7 @@ public sealed partial class Plugin
             }
 
             var database = document.Database;
-            double? defaultDistance = database.Insunits switch
-            {
-                UnitsValue.Meters => 0.15,
-                UnitsValue.Centimeters => 15,
-                UnitsValue.Millimeters => 150,
-                UnitsValue.Feet => 0.15 / 0.3048,
-                UnitsValue.Inches => 0.15 / 0.0254,
-                _ => null
-            };
-            var distancePrompt = new PromptDoubleOptions(defaultDistance is double value
-                ? $"\nHorizontal offset in drawing units <{value:G}>: "
-                : "\nHorizontal offset in drawing units (enter the equivalent of 15 cm): ")
-            {
-                AllowZero = false,
-                AllowNegative = false,
-                AllowNone = defaultDistance.HasValue,
-                UseDefaultValue = defaultDistance.HasValue
-            };
-            if (defaultDistance is double distanceDefault) distancePrompt.DefaultValue = distanceDefault;
-            var distance = editor.GetDouble(distancePrompt);
-            if (distance.Status != PromptStatus.OK && distance.Status != PromptStatus.None) return;
-            var offset = distance.Status == PromptStatus.None ? defaultDistance ?? double.NaN : distance.Value;
+            var offset = ResolveTaskDistance(editor, database, requestedMeters, 0.15d, "Horizontal offset");
             if (!double.IsFinite(offset) || offset <= 0) return;
 
             var pickedSide = editor.GetPoint("\nClick on the side where the new feature line should go: ");

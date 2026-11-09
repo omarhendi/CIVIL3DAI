@@ -2,6 +2,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
+using CivilAI.Workspace;
 using Autodesk.Civil.DatabaseServices;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
@@ -15,6 +16,7 @@ public sealed partial class Plugin
         var document = Application.DocumentManager.MdiActiveDocument;
         if (document is null) return;
         var editor = document.Editor;
+        var requestedMeters = ConsumeTaskDistance(document, DrawingTask.SpotElevations);
         var database = document.Database;
 
         try
@@ -22,26 +24,7 @@ public sealed partial class Plugin
             var surfaceId = PickTin(editor, database, "\nSelect the TIN for spot elevation labels: ");
             if (surfaceId.IsNull) return;
 
-            var defaultSpacing = database.Insunits switch
-            {
-                UnitsValue.Meters => 1d,
-                UnitsValue.Centimeters => 100d,
-                UnitsValue.Millimeters => 1000d,
-                UnitsValue.Feet => 1 / 0.3048,
-                UnitsValue.Inches => 1 / 0.0254,
-                _ => (double?)null
-            };
-            var spacingPrompt = new PromptDoubleOptions(defaultSpacing is double value
-                ? $"\nGrid spacing in drawing units <{value:G}>: "
-                : "\nGrid spacing in drawing units (enter the equivalent of 1 m): ")
-            {
-                AllowNegative = false, AllowZero = false, AllowNone = defaultSpacing.HasValue,
-                UseDefaultValue = defaultSpacing.HasValue
-            };
-            if (defaultSpacing is double suggested) spacingPrompt.DefaultValue = suggested;
-            var input = editor.GetDouble(spacingPrompt);
-            if (input.Status != PromptStatus.OK && input.Status != PromptStatus.None) return;
-            var spacing = input.Status == PromptStatus.None ? defaultSpacing ?? double.NaN : input.Value;
+            var spacing = ResolveTaskDistance(editor, database, requestedMeters, 1d, "Grid spacing");
             if (!double.IsFinite(spacing) || spacing <= 0) return;
 
             var points = new List<Point2d>();
@@ -107,6 +90,40 @@ public sealed partial class Plugin
             panel?.InvalidateDrawing(message);
             editor.WriteMessage("\n" + message);
         }
+    }
+
+    private static double ResolveTaskDistance(Editor editor, Database database, double? requestedMeters,
+        double defaultMeters, string label)
+    {
+        double? unitsPerMeter = database.Insunits switch
+        {
+            UnitsValue.Meters => 1d,
+            UnitsValue.Centimeters => 100d,
+            UnitsValue.Millimeters => 1000d,
+            UnitsValue.Feet => 1 / 0.3048,
+            UnitsValue.Inches => 1 / 0.0254,
+            _ => null
+        };
+        if (requestedMeters is double meters && unitsPerMeter is double scale) return meters * scale;
+
+        var fallback = unitsPerMeter * defaultMeters;
+        var prompt = new PromptDoubleOptions(fallback is double suggested
+            ? $"\n{label} in drawing units <{suggested:G}>: "
+            : $"\n{label} in drawing units (enter the equivalent of {requestedMeters ?? defaultMeters:G} m): ")
+        {
+            AllowNegative = false,
+            AllowZero = false,
+            AllowNone = fallback.HasValue,
+            UseDefaultValue = fallback.HasValue
+        };
+        if (fallback is double defaultValue) prompt.DefaultValue = defaultValue;
+        var result = editor.GetDouble(prompt);
+        return result.Status switch
+        {
+            PromptStatus.OK => result.Value,
+            PromptStatus.None => fallback ?? double.NaN,
+            _ => double.NaN
+        };
     }
 
     private static ObjectId PickTin(Editor editor, Database database, string prompt)

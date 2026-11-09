@@ -35,7 +35,8 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     private readonly TabControl tabs = new() { Margin = new Thickness(6) };
     private readonly Grid chat = new();
     private readonly InspectorPanel inspector;
-    private readonly Action<DrawingTask>? launchDrawingTask;
+    private readonly Action<DrawingTask, double?>? launchDrawingTask;
+    private readonly WrapPanel replyOptions = new();
     private readonly List<ChatMessage> sessionTurns = new();
     private long drawingContext;
     private AgentProfile? editing;
@@ -43,7 +44,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     private bool busy;
     private bool disposed;
 
-    public WorkspaceControl(InspectorPanel inspector, Func<Task<DrawingSnapshot?>> capture, WorkspaceStore? storage = null, IAiProvider? aiProvider = null, Action<DrawingTask>? launchDrawingTask = null)
+    public WorkspaceControl(InspectorPanel inspector, Func<Task<DrawingSnapshot?>> capture, WorkspaceStore? storage = null, IAiProvider? aiProvider = null, Action<DrawingTask, double?>? launchDrawingTask = null)
     {
         this.inspector = inspector;
         this.launchDrawingTask = launchDrawingTask;
@@ -66,7 +67,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         FontFamily = new FontFamily("Segoe UI");
         settings = Load(() => store.LoadSettings(), new WorkspaceSettings(), "Settings");
         FontSize = Math.Clamp(settings.FontSize, 11, 20);
-        send = ActionButton("Send", SendAsync);
+        send = ActionButton("Send", () => SendAsync());
         cancel = ActionButton("Cancel request", () => { pending?.Cancel(); return Task.CompletedTask; });
         cancel.Visibility = Visibility.Collapsed;
         var root = new DockPanel();
@@ -139,7 +140,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         {
             if (busy) throw new InvalidOperationException("Cancel or finish the current request first.");
             if (MessageBox.Show("Clear this computer's saved conversation?", "New conversation", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-            { sessionTurns.Clear(); engine.Messages.Clear(); history.Clear(); store.SaveConversation(engine.Messages); }
+            { replyOptions.Children.Clear(); sessionTurns.Clear(); engine.Messages.Clear(); history.Clear(); store.SaveConversation(engine.Messages); }
             return Task.CompletedTask;
         }));
         chat.Children.Add(toolbar);
@@ -155,6 +156,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         actions.Children.Add(send);
         actions.Children.Add(cancel);
         DockPanel.SetDock(actions, Dock.Bottom); composer.Children.Add(actions);
+        DockPanel.SetDock(replyOptions, Dock.Top); composer.Children.Add(replyOptions);
         composer.Children.Add(input);
         Grid.SetRow(composer, 3); chat.Children.Add(composer);
         tabs.Items.Add(new TabItem { Header = "Chat", Content = chat });
@@ -217,9 +219,13 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     public void SetSnapshot(DrawingSnapshot? value)
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => SetSnapshot(value)); return; }
-        if (value is null) drawingContext++;
+        if (value is null)
+        {
+            drawingContext++;
+            replyOptions.Children.Clear();
+        }
     }
-    private async Task ExecuteDrawingTaskAsync(DrawingTask task)
+    private async Task ExecuteDrawingTaskAsync(DrawingTask task, double? distanceMeters = null)
     {
         if (task == DrawingTask.Inspect)
         {
@@ -233,7 +239,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
                 return;
             }
 
-            launchDrawingTask(task);
+            launchDrawingTask(task, distanceMeters);
             Log("Follow the prompts in the Civil 3D command line.");
         }
     }
@@ -277,10 +283,10 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         Log("Drawing task results are in Chat.");
     }
 
-    private async Task SendAsync()
+    private async Task SendAsync(string? quickReply = null)
     {
         if (busy) return;
-        var prompt = input.Text.Trim();
+        var prompt = quickReply ?? input.Text.Trim();
         if (prompt.Length == 0) return;
         var selectedProvider = providers.SelectedItem as string ?? "Offline";
         if (selectedProvider == "Offline")
@@ -304,6 +310,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         if (config.Provider != "Local" && string.IsNullOrWhiteSpace(sessionKey))
             throw new InvalidOperationException("Enter a session API key in Providers.");
 
+        replyOptions.Children.Clear();
         busy = true;
         send.IsEnabled = false;
         cancel.Visibility = Visibility.Visible;
@@ -312,7 +319,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         try
         {
             Append(new ChatMessage("user", prompt));
-            input.Clear();
+            if (quickReply is null) input.Clear();
             Log($"Waiting for {config.Provider}…");
             var reply = await provider.SendAsync(request, sessionKey, cancellation.Token);
             if (disposed || cancellation.IsCancellationRequested) return;
@@ -323,16 +330,20 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
                 return;
             }
 
-            var (action, message) = proposal.Value;
+            var (action, message, options, distanceMeters) = proposal;
             sessionTurns.Add(new ChatMessage("user", prompt));
             // Keep the proposed action in context so a follow-up can refer to it.
             var response = action is DrawingTask task ? $"Task: {DrawingTaskProposal.Label(task)}.\n\n{message}" : message;
-            sessionTurns.Add(new ChatMessage("assistant", response));
+            var contextReply = options.Count == 0 ? response : response + "\nChoices: " + string.Join(" | ", options);
+            sessionTurns.Add(new ChatMessage("assistant", contextReply));
             if (sessionTurns.Count > 8) sessionTurns.RemoveRange(0, sessionTurns.Count - 8);
             Append(new ChatMessage("assistant", response));
             if (action is null)
             {
-                Log("Response received.");
+                if (requestContext == drawingContext)
+                    foreach (var option in options)
+                        replyOptions.Children.Add(ActionButton(option, () => SendAsync(option)));
+                Log(options.Count == 0 ? "Response received." : "Choose an option or type your answer.");
                 return;
             }
 
@@ -342,7 +353,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
                 return;
             }
 
-            try { await ExecuteDrawingTaskAsync(action.Value); }
+            try { await ExecuteDrawingTaskAsync(action.Value, distanceMeters); }
             catch (Exception ex) { Error("Starting the drawing task", ex); }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
