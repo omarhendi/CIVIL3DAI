@@ -18,12 +18,14 @@ public interface IAiProvider
 // Sending is separate so the UI can show the exact request and obtain approval first.
 public sealed class JsonAiProvider : IAiProvider, IDisposable
 {
+    internal const string GroqDefaultModel = "openai/gpt-oss-20b";
     private readonly HttpClient client;
     public JsonAiProvider() : this(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { }
     public JsonAiProvider(HttpMessageHandler handler) => client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(120) };
     public PreparedRequest Prepare(ProviderConfiguration config, IReadOnlyList<ChatMessage> messages)
     {
-        if (string.IsNullOrWhiteSpace(config.Model)) throw new ArgumentException("Enter the provider's model identifier in Settings.");
+        var model = config.Provider == "Groq" && string.IsNullOrWhiteSpace(config.Model) ? GroqDefaultModel : config.Model;
+        if (string.IsNullOrWhiteSpace(model)) throw new ArgumentException("Enter the provider's model identifier in Settings.");
         string endpoint;
         object body;
         switch (config.Provider)
@@ -32,6 +34,16 @@ public sealed class JsonAiProvider : IAiProvider, IDisposable
             case "Local":
                 endpoint = config.Provider == "OpenAI" ? "https://api.openai.com/v1/chat/completions" : ValidateLocalEndpoint(config.LocalEndpoint).AbsoluteUri;
                 body = new { model = config.Model, messages = messages.Select(m => new { role = m.Role, content = m.Content }), stream = false };
+                break;
+            case "Groq":
+                endpoint = "https://api.groq.com/openai/v1/chat/completions";
+                body = new
+                {
+                    model,
+                    messages = messages.Select(m => new { role = m.Role, content = m.Content }),
+                    stream = false,
+                    response_format = new { type = "json_object" }
+                };
                 break;
             case "Anthropic":
                 endpoint = "https://api.anthropic.com/v1/messages";

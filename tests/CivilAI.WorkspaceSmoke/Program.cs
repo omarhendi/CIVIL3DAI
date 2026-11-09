@@ -45,7 +45,7 @@ try
     Reject(() => engine.Compose(agent, " ", null), "Blank prompt blocked");
     var transport = new FakeTransport();
     using var provider = new JsonAiProvider(transport);
-    var expected = new Dictionary<string, string> { ["OpenAI"] = "api.openai.com", ["Anthropic"] = "api.anthropic.com", ["Google"] = "generativelanguage.googleapis.com", ["Local"] = "localhost" };
+    var expected = new Dictionary<string, string> { ["OpenAI"] = "api.openai.com", ["Anthropic"] = "api.anthropic.com", ["Google"] = "generativelanguage.googleapis.com", ["Groq"] = "api.groq.com", ["Local"] = "localhost" };
     foreach (var entry in expected)
     {
         var sendsBeforePreparation = transport.Calls;
@@ -60,6 +60,14 @@ try
     Reject(() => provider.Prepare(new("Local", "model", "http://remote.example/v1"), withoutDrawing), "Remote cleartext endpoint blocked");
     Reject(() => provider.Prepare(new("Local", "model", "https://key:secret@remote.example/v1"), withoutDrawing), "Endpoint credentials blocked");
     Reject(() => provider.Prepare(new("Local", "model", "https://remote.example/v1?key=secret"), withoutDrawing), "Endpoint query credentials blocked");
+    var groq = provider.Prepare(new("Groq", "", "https://example.invalid/v1"), withoutDrawing);
+    using (var groqBody = System.Text.Json.JsonDocument.Parse(groq.Body))
+    {
+        Check(groq.Endpoint.AbsoluteUri == "https://api.groq.com/openai/v1/chat/completions" &&
+            groqBody.RootElement.GetProperty("model").GetString() == "openai/gpt-oss-20b" &&
+            groqBody.RootElement.GetProperty("response_format").GetProperty("type").GetString() == "json_object",
+            "Groq uses its fixed endpoint, default model and JSON mode");
+    }
     var prepared = provider.Prepare(new("OpenAI", "test", ""), withoutDrawing);
     var before = transport.Calls;
     try { await provider.SendAsync(prepared, "", CancellationToken.None); throw new Exception("Expected missing key error"); }
