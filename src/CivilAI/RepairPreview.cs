@@ -10,17 +10,23 @@ public sealed partial class Plugin
  public void RepairPreview()
  {
   var doc=Application.DocumentManager.MdiActiveDocument; if(doc is null)return; var ed=doc.Editor;
+  var stage="selection";
   try {
    var o=new PromptEntityOptions("\nSelect TIN surface: "); o.AddAllowedClass(typeof(TinSurface),true); var pick=ed.GetEntity(o); if(pick.Status!=PromptStatus.OK)return;
    var pt=ed.GetPoint("\nPick near the steep triangle to inspect candidate swaps: "); if(pt.Status!=PromptStatus.OK)return;
    var rows=new List<PropertyValue>(); string name;
+   stage="opening read-only surface transaction";
    using(doc.LockDocument()) using(var tr=doc.Database.TransactionManager.StartOpenCloseTransaction()) {
     var s=(TinSurface)tr.GetObject(pick.ObjectId,OpenMode.ForRead); name=s.Name;
     if(s.IsReferenceObject&&(!s.IsReferenceValid||s.IsReferenceStale||!s.IsReferencedSourceExisting))throw new InvalidOperationException("Surface reference unavailable.");
-    using var t=s.FindTriangleAtXY(pt.Value.X,pt.Value.Y);
+    stage="locating triangle at picked WCS point";
+    var wcs=pt.Value.TransformBy(ed.CurrentUserCoordinateSystem);
+    using var t=s.FindTriangleAtXY(wcs.X,wcs.Y);
+    stage="reading selected triangle vertices";
     var tv=new[]{t.Vertex1,t.Vertex2,t.Vertex3}; var p=tv.Select(v=>{using(v)return v.Location;}).ToArray();
     TriangleSlope.TryCalculate(new(p[0].X,p[0].Y,p[0].Z),new(p[1].X,p[1].Y,p[1].Z),new(p[2].X,p[2].Y,p[2].Z),out var current,out _);
     rows.Add(new("Selected triangle slope",$"{current:G8} %")); var candidates=0;
+    stage="checking adjacent edges";
     foreach(var edge in new[]{t.Edge1,t.Edge2,t.Edge3}) using(edge) {
      if(edge.IsLocked){rows.Add(new("Candidate","Skipped locked breakline edge."));continue;}
      using var adjacent=edge.Triangle2;
@@ -43,3 +49,4 @@ public sealed partial class Plugin
  }
  private static double Slope(Autodesk.AutoCAD.Geometry.Point3d a,Autodesk.AutoCAD.Geometry.Point3d b,Autodesk.AutoCAD.Geometry.Point3d c)=>TriangleSlope.TryCalculate(new(a.X,a.Y,a.Z),new(b.X,b.Y,b.Z),new(c.X,c.Y,c.Z),out var g,out _)?g:double.PositiveInfinity;
 }
+
