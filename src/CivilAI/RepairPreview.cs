@@ -11,12 +11,10 @@ public sealed partial class Plugin
  {
   var doc=Application.DocumentManager.MdiActiveDocument; if(doc is null)return; var ed=doc.Editor;
   var stage="selection";
-  var stage="selection";
   try {
    var o=new PromptEntityOptions("\nSelect TIN surface: "); o.AddAllowedClass(typeof(TinSurface),true); var pick=ed.GetEntity(o); if(pick.Status!=PromptStatus.OK)return;
    var pt=ed.GetPoint("\nPick near the steep triangle to inspect candidate swaps: "); if(pt.Status!=PromptStatus.OK)return;
    var rows=new List<PropertyValue>(); string name;
-   stage="opening read-only surface transaction";
    stage="opening read-only surface transaction";
    using(doc.LockDocument()) using(var tr=doc.Database.TransactionManager.StartOpenCloseTransaction()) {
     var s=(TinSurface)tr.GetObject(pick.ObjectId,OpenMode.ForRead); name=s.Name;
@@ -26,11 +24,9 @@ public sealed partial class Plugin
     stage="locating triangle at picked WCS point";
     using var t=s.FindTriangleAtXY(wcs.X,wcs.Y);
     stage="reading selected triangle vertices";
-    stage="reading selected triangle vertices";
     var tv=new[]{t.Vertex1,t.Vertex2,t.Vertex3}; var p=tv.Select(v=>{using(v)return v.Location;}).ToArray();
     TriangleSlope.TryCalculate(new(p[0].X,p[0].Y,p[0].Z),new(p[1].X,p[1].Y,p[1].Z),new(p[2].X,p[2].Y,p[2].Z),out var current,out _);
     rows.Add(new("Selected triangle slope",$"{current:G8} %")); var candidates=0;
-    stage="checking adjacent edges";
     stage="checking adjacent edges";
     foreach(var edge in new[]{t.Edge1,t.Edge2,t.Edge3}) using(edge) {
      if(edge.IsLocked){rows.Add(new("Candidate","Skipped locked breakline edge."));continue;}
