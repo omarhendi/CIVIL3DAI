@@ -89,7 +89,7 @@ public sealed partial class Plugin
             ClearTriangleLocations();
             lastSnapshot = null;
             workspace?.SetSnapshot(null);
-            panel?.InvalidateDrawing("Proposed surface created. Refresh to inspect the updated drawing.");
+            panel?.InvalidateDrawing($"Created TIN '{name}' with {triangleCount} visible triangle(s) from {ids.Length} feature line(s).");
             editor.WriteMessage($"\nCreated TIN '{name}' with {triangleCount} visible triangle(s) from {ids.Length} feature line(s).");
         }
         catch (System.Exception ex)

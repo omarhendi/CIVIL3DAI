@@ -77,8 +77,6 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         DockPanel.SetDock(state, Dock.Bottom); root.Children.Add(state);
         root.Children.Add(tabs); Content = root;
         BuildChat(); BuildAgents(); BuildSettings();
-        inspector.Background = Brush("#151923"); inspector.Foreground = Foreground;
-        tabs.Items.Add(new TabItem { Header = "Drawing Inspector", Content = inspector });
         tabs.Items.Add(new TabItem { Header = "Diagnostics", Content = log });
         foreach (var agent in Load(() => store.LoadAgents(), Array.Empty<AgentProfile>() as IReadOnlyList<AgentProfile>, "Agents")) agents.Add(agent);
         if (agents.Count == 0)
@@ -92,9 +90,11 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         foreach (var message in Load(() => store.LoadConversation(), new List<ChatMessage>(), "Conversation"))
             if (message.Role is "user" or "assistant" or "local") { engine.Messages.Add(message); history.Add(message); }
         transcript.ItemsSource = history;
-        tabs.SelectedIndex = Math.Clamp(settings.SelectedTab, 0, tabs.Items.Count - 1);
+        tabs.SelectedIndex = 0;
         tabs.SelectionChanged += (_, e) => { if (e.Source == tabs) SaveSettings(); };
         agentSelector.SelectionChanged += (_, _) => SaveSettings();
+        inspector.ReportReady += ShowDrawingReport;
+        inspector.Notice += Log;
         Log("Workspace ready. Select a provider to chat, or use offline drawing tasks.");
     }
 
@@ -235,20 +235,48 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
 
             launchDrawingTask(task);
             Log("Follow the prompts in the Civil 3D command line.");
-            if (task is DrawingTask.CreateTin or DrawingTask.OffsetLevels) return;
         }
-
-        tabs.SelectedIndex = 3;
     }
 
     private async Task InspectAsync()
     {
         Log("Inspecting the active drawing locally.");
         var result = await tools.ExecuteAsync("drawing.inspect");
-        if (result is null) { Log("Inspection returned no snapshot. See Drawing Inspector diagnostics."); return; }
+        if (result is null) { Log("Inspection returned no drawing results. See Diagnostics for details."); return; }
         SetSnapshot(result);
-        Append(new ChatMessage("local", $"Local inspection: {Path.GetFileName(result.Drawing)}\n{result.Items.Count(i => i.Kind == "TIN surface")} TIN surfaces; {result.Items.Count(i => i.Kind == "Feature line")} feature lines. Details are in Drawing Inspector. This snapshot has not been sent to a provider."));
     }
+    private void ShowDrawingReport(DrawingSnapshot snapshot)
+    {
+        var report = new StringBuilder();
+        var surfaces = snapshot.Items.Where(item => item.Kind == "TIN surface").ToArray();
+        var featureCount = snapshot.Items.Count(item => item.Kind == "Feature line");
+        var findings = snapshot.Items.Where(item => item.Kind is not ("TIN surface" or "Feature line")).ToArray();
+        if (findings.Length == 0)
+        {
+            report.AppendLine($"Drawing inventory: {surfaces.Length} TIN surface(s) and {featureCount} feature line(s).");
+            foreach (var item in surfaces.Take(12)) report.AppendLine($"• {item.Name}");
+            if (surfaces.Length > 12) report.AppendLine($"Plus {surfaces.Length - 12} more surfaces.");
+        }
+        else
+        {
+            foreach (var item in findings.Take(8))
+            {
+                report.AppendLine(item.Label);
+                var rows = item.Properties.Take(12).ToArray();
+                foreach (var row in rows) report.AppendLine($"{row.Name}: {row.Value}");
+                if (item.Properties.Count > rows.Length)
+                    report.AppendLine($"Plus {item.Properties.Count - rows.Length} more rows.");
+                report.AppendLine();
+            }
+
+            if (findings.Length > 8) report.AppendLine($"Plus {findings.Length - 8} more results.");
+        }
+
+        if (snapshot.Unavailable > 0) report.AppendLine($"Unavailable reads: {snapshot.Unavailable}.");
+        Append(new ChatMessage("local", report.ToString().TrimEnd()));
+        Log("Drawing task results are in Chat.");
+    }
+
     private async Task SendAsync()
     {
         if (busy) return;
@@ -365,6 +393,8 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     }
     public void Dispose()
     {
+        inspector.ReportReady -= ShowDrawingReport;
+        inspector.Notice -= Log;
         SaveSettings(); disposed = true; pending?.Cancel(); (provider as IDisposable)?.Dispose(); key.Clear();
     }
 }

@@ -107,7 +107,7 @@ public sealed partial class Plugin
             }
             EnsurePanel(); palette!.Visible=true; lastSnapshot=null; workspace?.SetSnapshot(null);
             panel!.Show(new DrawingSnapshot(doc.Name,items,skipped,read,Array.Empty<string>()));
-            ed.WriteMessage("\nArea assessment ready in Drawing Inspector → All Properties.\n");
+            ed.WriteMessage("\nArea assessment ready in Civil AI Chat.\n");
         }
         catch(System.Exception ex)
         {
@@ -116,6 +116,3 @@ public sealed partial class Plugin
         }
     }
 }
-
-
-

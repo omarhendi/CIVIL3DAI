@@ -12,16 +12,16 @@ internal static class WorkspaceChecks
         var store = new WorkspaceStore(path);
         var snapshot = new DrawingSnapshot("Test.dwg", Array.Empty<DrawingItem>(), 0, 0, Array.Empty<string>());
         var toolCalls = 0;
-        var approvals = 0;
         var launched = new List<DrawingTask>();
         var provider = new ProbeProvider();
-        var workspace = new WorkspaceControl(new InspectorPanel(() => Task.CompletedTask),
+        var inspector = new InspectorPanel(() => Task.CompletedTask);
+        var workspace = new WorkspaceControl(inspector,
             () => { toolCalls++; return Task.FromResult<DrawingSnapshot?>(snapshot); }, store, provider, launched.Add);
         try
         {
             var controls = Descendants(workspace).ToArray();
             var tabs = controls.OfType<TabControl>().Single(t => t.Items.OfType<TabItem>().Any(i => i.Header as string == "Chat"));
-            Check(tabs.Items.Count == 5, "Chat, agents, providers, inspector and diagnostics tabs are present");
+            Check(tabs.Items.Count == 4 && tabs.Items.OfType<TabItem>().All(t => t.Header as string != "Drawing Inspector"), "Workspace has no Drawing Inspector tab");
             T Named<T>(string name) where T : FrameworkElement => controls.OfType<T>().Single(x => x.Name == name);
             Button Button(string label) => controls.OfType<Button>().Single(b => b.Content as string == label);
             void Click(string label) => Button(label).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -56,6 +56,14 @@ internal static class WorkspaceChecks
             provider.Response = """{"action":"inspect","message":"I will inspect the drawing."}""";
             Send("What surfaces do I have?");
             Check(toolCalls == 2, "Model-directed inspection runs from Send");
+            var chatTab = tabs.SelectedItem;
+            inspector.Show(new DrawingSnapshot("Test.dwg", new[] {
+                new DrawingItem("Area assessment", "Road test", new[] { new PropertyValue("Assessment", "Within limits") })
+            }, 0, 1, Array.Empty<string>()));
+            Check(ReferenceEquals(chatTab, tabs.SelectedItem) &&
+                Named<ListBox>("ConversationHistory").Items.OfType<ChatMessage>()
+                    .Any(m => m.Role == "local" && m.Content.Contains("Road test") && m.Content.Contains("Within limits")),
+                "Drawing reports appear in Chat without switching tabs");
 
             provider.Response = """{"action":"create_tin","message":"I will open the surface workflow."}""";
             provider.OnSend = () => workspace.SetSnapshot(null);

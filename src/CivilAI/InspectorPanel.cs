@@ -124,12 +124,16 @@ internal sealed class InspectorPanel : UserControl
         diagnostics.Text = message + "\n";
     });
 
+    internal event Action<DrawingSnapshot>? ReportReady;
+    internal event Action<string>? Notice;
+
     public void InvalidateDrawing(string message) => Update(() =>
     {
         objects.ItemsSource = null;
         properties.ItemsSource = null;
         summary.ItemsSource = null;
         Stage(message);
+        Notice?.Invoke(message);
     });
 
     public void BeginRefresh(string message) => Update(() =>
@@ -148,13 +152,16 @@ internal sealed class InspectorPanel : UserControl
         objects.ItemsSource = null;
         properties.ItemsSource = null;
         summary.ItemsSource = null;
-        Stage($"{stage} failed: {exception.GetBaseException().Message}");
+        var message = $"{stage} failed: {exception.GetBaseException().Message}";
+        Stage(message);
+        Notice?.Invoke(message);
         diagnostics.AppendText(exception + "\n");
         diagnostics.ScrollToEnd();
     });
 
     public void Show(DrawingSnapshot snapshot) => Update(() =>
     {
+        ReportReady?.Invoke(snapshot);
         status.Text = $"Drawing: {snapshot.Drawing}\n{snapshot.Items.Count(i => i.Kind == "TIN surface")} TIN surfaces; " +
               $"{snapshot.Items.Count(i => i.Kind == "Feature line")} feature lines.\n" +
               (snapshot.Items.Count == 0 ? "No native TIN surfaces or feature lines were found in the inspected objects.\n" : "Select an object to view its properties.\n") +
@@ -179,6 +186,3 @@ internal sealed class InspectorPanel : UserControl
         }; }
     });
 }
-
-
-

@@ -3,7 +3,7 @@
 Civil AI for Civil 3D 2026 can ask a configured language model to interpret a request and propose one of its supported drawing tasks.
 
 1. In **Providers**, choose OpenAI, Anthropic, Google, Groq, or a compatible local endpoint. Enter the provider's model ID and any required session API key.
-2. In **Chat**, write your request and click **Send**. Civil AI responds or starts the matching drawing workflow. Follow any Civil 3D prompts for inputs and confirmation before creating objects.
+2. In **Chat**, write your request and click **Send**. Civil AI responds or starts the matching drawing workflow. Follow any Civil 3D prompts for inputs and confirmation before creating objects. Drawing reports appear in Chat.
 
 Groq defaults to `openai/gpt-oss-20b` and uses a Groq session API key. The base URL is built in.
 

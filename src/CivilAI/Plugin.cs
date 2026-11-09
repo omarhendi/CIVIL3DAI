@@ -40,7 +40,7 @@ public sealed partial class Plugin : IExtensionApplication
         ClearTriangleLocations();
         lastSnapshot = null;
         workspace?.SetSnapshot(null);
-        panel?.InvalidateDrawing("Drawing context changed. Refresh to inspect the active drawing.");
+        panel?.InvalidateDrawing("Drawing context changed.");
     }
 
     [CommandMethod("CIVILAI", CommandFlags.Modal)]
@@ -48,7 +48,6 @@ public sealed partial class Plugin : IExtensionApplication
     {
         EnsurePanel();
         palette!.Visible = true;
-        Refresh();
     }
 
     private static void LaunchDrawingTask(DrawingTask task)
@@ -73,21 +72,14 @@ public sealed partial class Plugin : IExtensionApplication
     {
         if (palette is not null) return;
         panel = new InspectorPanel(RequestRefreshAsync, LocateTriangleAsync);
-        try
+        workspace = new WorkspaceControl(panel, async () =>
         {
-            workspace = new WorkspaceControl(panel, async () =>
-            {
-                ClearTriangleLocations();
-        lastSnapshot = null;
-                workspace?.SetSnapshot(null);
-                await RequestRefreshAsync();
-                return lastSnapshot;
-            }, launchDrawingTask: LaunchDrawingTask);
-        }
-        catch (System.Exception ex)
-        {
-            panel.ShowError("Opening agent workspace (drawing inspector remains available)", ex);
-        }
+            ClearTriangleLocations();
+            lastSnapshot = null;
+            workspace?.SetSnapshot(null);
+            await RequestRefreshAsync();
+            return lastSnapshot;
+        }, launchDrawingTask: LaunchDrawingTask);
         palette = new PaletteSet("Civil AI 0.3", new Guid("B7A3A2CA-10C8-4575-BC7D-CFAE9601D313"))
         {
             Style = PaletteSetStyles.ShowAutoHideButton | PaletteSetStyles.ShowCloseButton | PaletteSetStyles.ShowPropertiesMenu,
@@ -96,7 +88,7 @@ public sealed partial class Plugin : IExtensionApplication
             KeepFocus = true,
             DockEnabled = DockSides.Left | DockSides.Right
         };
-        palette.AddVisual("Agent workspace", (System.Windows.Media.Visual?)workspace ?? panel);
+        palette.AddVisual("Agent workspace", workspace);
     }
 
     private static bool refreshing;

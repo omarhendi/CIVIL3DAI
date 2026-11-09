@@ -72,7 +72,7 @@ public sealed partial class Plugin
             rows.Add(new("Triangle scan limits", FormattableString.Invariant($"{lower.Value}–{upper.Value} %. Visible triangles only. Coordinates are WCS drawing units. Indices apply only to this scan.")));
             foreach (var finding in findings)
                 rows.Add(new($"Triangle #{finding.Index}", FormattableString.Invariant($"Slope {finding.Slope:0.#####} %; centre X={finding.Centre.X:0.######}, Y={finding.Centre.Y:0.######}, Z={finding.Centre.Z:0.######}")));
-            rows.Add(new("Triangle scan scope", "Double-click a triangle row to temporarily zoom and highlight. Press Enter to clear and restore the view. No persistent markers or geometry edits. No pavement/landscape classification or compliance verdict. Missing/partial data cannot establish a pass. Scan stops after 100,000 triangles or 5 seconds between API calls; a native API call itself cannot be interrupted."));
+            rows.Add(new("Triangle scan scope", "No pavement/landscape classification or compliance verdict. Missing/partial data cannot establish a pass. Scan stops after 100,000 triangles or 5 seconds between API calls; a native API call itself cannot be interrupted."));
             EnsurePanel();
             triangleDocument = document;
             triangleSource = selected.ObjectId;
@@ -81,10 +81,9 @@ public sealed partial class Plugin
             lastSnapshot = null;
             workspace?.SetSnapshot(null);
             panel!.Show(new DrawingSnapshot(document.Name, new[] { new DrawingItem("Triangle locations", name, rows) }, invalid, visited, Array.Empty<string>()));
-            editor.WriteMessage("\nCivil AI triangle locations are in Drawing Inspector → All Properties.\n");
+            editor.WriteMessage("\nCivil AI triangle locations are in Civil AI Chat.\n");
         }
         catch (System.Exception ex)
         { editor.WriteMessage($"\nCivil AI triangle scan unavailable ({ex.GetType().Name}). No rebuild or drawing edits attempted.\n"); }
     }
 }
-

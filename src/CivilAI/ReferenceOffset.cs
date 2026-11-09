@@ -110,7 +110,7 @@ public sealed partial class Plugin
             ClearTriangleLocations();
             lastSnapshot = null;
             workspace?.SetSnapshot(null);
-            panel?.InvalidateDrawing("Offset feature line created. Refresh to inspect the updated drawing.");
+            panel?.InvalidateDrawing($"Created offset feature line {featureId.Handle} with {vertices.Length} points.");
             editor.WriteMessage($"\nCreated feature line {featureId.Handle} with {vertices.Length} points.");
         }
         catch (System.Exception ex)
