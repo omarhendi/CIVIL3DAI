@@ -3,12 +3,11 @@
 Civil AI for Civil 3D 2026 can ask a configured language model to interpret a request and propose one of its supported drawing tasks.
 
 1. In **Providers**, choose OpenAI, Anthropic, Google, Groq, or a compatible local endpoint. Enter the provider's model ID and any required session API key.
-2. In **Chat**, write a request and select **Review & send**. Review the destination and payload. The provider receives the current message and built-in instructions.
-3. Review the proposed task and choose **Run proposed task**. Follow the Civil 3D prompts to select inputs and confirm object creation.
+2. In **Chat**, write your request and click **Send**. Civil AI responds or starts the matching drawing workflow. Follow any Civil 3D prompts for inputs and confirmation before creating objects.
 
 Groq defaults to `openai/gpt-oss-20b` and uses a Groq session API key. The base URL is built in.
 
-Try “Carry the road levels onto a line just beyond the curb.” The offset workflow will ask for the reference edge, elevation source, distance and side. Drawing snapshots, agent files and conversation history are stored locally and are excluded from model requests. **Run drawing task** also supports a small set of offline phrases.
+Try “Carry the road levels onto a line just beyond the curb.” The offset workflow asks for the reference edge, elevation source, distance and side. The model receives your current message and up to four recent exchanges from this session. Drawing snapshots and agent files stay local. In Offline mode, **Send** also recognizes a small set of drawing task phrases.
 
 For prior milestones see [surface inspection and deployment](MILESTONE-0.3.md). The documentation below describes the preserved v0.2 baseline.
 
