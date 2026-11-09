@@ -59,6 +59,8 @@ public sealed partial class Plugin
                 var firstY = Math.Ceiling(bounds.MinimumCoordinateY / spacing);
                 var columns = Math.Floor(bounds.MaximumCoordinateX / spacing) - firstX + 1;
                 var rows = Math.Floor(bounds.MaximumCoordinateY / spacing) - firstY + 1;
+                if (columns <= 0 || rows <= 0)
+                    throw new InvalidOperationException("No grid intersections fall within the surface extents. Try a smaller spacing.");
                 if (!double.IsFinite(columns * rows) || columns * rows > 100_000 ||
                     Math.Abs(firstX) + columns >= 9e15 || Math.Abs(firstY) + rows >= 9e15)
                     throw new InvalidOperationException("The grid is too dense for this surface. Increase the spacing.");
