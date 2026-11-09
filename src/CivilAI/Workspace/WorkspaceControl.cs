@@ -240,8 +240,16 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
             }
 
             launchDrawingTask(task, distanceMeters);
-            Log("Follow the prompts in the Civil 3D command line.");
+            Log(task == DrawingTask.ReplaceSpotElevations
+                ? "Replacing spot elevations in Civil 3D…"
+                : "Follow the prompts in the Civil 3D command line.");
         }
+    }
+
+    internal void ShowTaskResult(string message)
+    {
+        Append(new ChatMessage("local", message));
+        Log(message);
     }
 
     private async Task InspectAsync()
@@ -350,6 +358,26 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
             if (requestContext != drawingContext)
             {
                 Log("The drawing changed during the request. Send it again for the active drawing.");
+                return;
+            }
+
+            if (action == DrawingTask.ReplaceSpotElevations)
+            {
+                Append(new ChatMessage("local",
+                    $"Replace the selected spot labels, or the last Civil AI grid if nothing is selected, with a {distanceMeters:G} m grid?"));
+                replyOptions.Children.Add(ActionButton("Replace grid", async () =>
+                {
+                    if (busy || requestContext != drawingContext) return;
+                    replyOptions.Children.Clear();
+                    await ExecuteDrawingTaskAsync(DrawingTask.ReplaceSpotElevations, distanceMeters);
+                }));
+                replyOptions.Children.Add(ActionButton("Cancel", () =>
+                {
+                    replyOptions.Children.Clear();
+                    Log("Grid replacement canceled.");
+                    return Task.CompletedTask;
+                }));
+                Log("Confirm the replacement in Chat.");
                 return;
             }
 

@@ -91,6 +91,13 @@ internal static class WorkspaceChecks
                 provider.LastMessages.Any(m => m.Role == "assistant" && m.Content.Contains("How far apart?")) &&
                 !Descendants(workspace).OfType<Button>().Any(b => b.Content as string == "2 m"),
                 "A quick reply keeps context and passes the selected spacing to the native task");
+            provider.Response = """{"action":"replace_spot_elevations","message":"I can replace the existing grid.","distance_meters":6}""";
+            Send("Replace the spot elevations you just made with a 6 m grid.");
+            Check(launched.Count == 3, "Grid replacement waits for explicit approval in Chat");
+            var replace = Descendants(workspace).OfType<Button>().Single(b => b.Content as string == "Replace grid");
+            replace.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(launched.Count == 4 && launched[^1] == DrawingTask.ReplaceSpotElevations && launchedDistance == 6,
+                "One Chat approval dispatches the replacement with the new spacing");
             tabs.SelectedIndex = 2;
             Check(store.LoadSettings().SelectedTab == 2 && store.LoadSettings().Provider == "Local", "Tab and provider UI settings persist");
             for (var tab = 0; tab < tabs.Items.Count; tab++)

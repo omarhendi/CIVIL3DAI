@@ -21,12 +21,15 @@ public sealed partial class Plugin : IExtensionApplication
     {
         Application.DocumentManager.DocumentActivated += DrawingChanged;
         Application.DocumentManager.DocumentToBeDestroyed += DrawingChanged;
+        Application.DocumentManager.DocumentToBeDestroyed += ForgetSpotGrid;
     }
 
     public void Terminate()
     {
         Application.DocumentManager.DocumentActivated -= DrawingChanged;
         Application.DocumentManager.DocumentToBeDestroyed -= DrawingChanged;
+        Application.DocumentManager.DocumentToBeDestroyed -= ForgetSpotGrid;
+        spotGrids.Clear();
         workspace?.Dispose();
         workspace = null;
         pendingDistance = null;
@@ -67,6 +70,7 @@ public sealed partial class Plugin : IExtensionApplication
             DrawingTask.CreateTin => "CIVILAICREATETIN ",
             DrawingTask.AddTinBoundary => "CIVILAIBOUNDARY ",
             DrawingTask.SpotElevations => "CIVILAISPOTELEVATIONS ",
+            DrawingTask.ReplaceSpotElevations => "CIVILAIREPLACESPOTS ",
             DrawingTask.OffsetLevels => "CIVILAIOFFSETLEVELS ",
             _ => throw new ArgumentOutOfRangeException(nameof(task))
         };

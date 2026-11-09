@@ -10,7 +10,8 @@ internal enum DrawingTask
     CreateTin,
     OffsetLevels,
     AddTinBoundary,
-    SpotElevations
+    SpotElevations,
+    ReplaceSpotElevations
 }
 
 internal static class DrawingTaskRequest

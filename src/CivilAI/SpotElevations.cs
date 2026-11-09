@@ -1,3 +1,4 @@
+using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
@@ -10,18 +11,43 @@ namespace CivilAI;
 
 public sealed partial class Plugin
 {
+    private sealed record SpotGrid(ObjectId SurfaceId, ObjectId[] Labels);
+    private static readonly Dictionary<Document, SpotGrid> spotGrids = new();
+
+    private static void ForgetSpotGrid(object sender, DocumentCollectionEventArgs args) =>
+        spotGrids.Remove(args.Document);
+
     [CommandMethod("CIVILAISPOTELEVATIONS", CommandFlags.Modal | CommandFlags.UsePickSet)]
-    public void AddSpotElevations()
+    public void AddSpotElevations() => RunSpotElevations(replace: false);
+
+    [CommandMethod("CIVILAIREPLACESPOTS", CommandFlags.Modal | CommandFlags.UsePickSet)]
+    public void ReplaceSpotElevations() => RunSpotElevations(replace: true);
+
+    private static void RunSpotElevations(bool replace)
     {
         var document = Application.DocumentManager.MdiActiveDocument;
         if (document is null) return;
         var editor = document.Editor;
-        var requestedMeters = ConsumeTaskDistance(document, DrawingTask.SpotElevations);
+        var requestedMeters = ConsumeTaskDistance(document,
+            replace ? DrawingTask.ReplaceSpotElevations : DrawingTask.SpotElevations);
         var database = document.Database;
 
         try
         {
-            var surfaceId = PickTin(editor, database, "\nSelect the TIN for spot elevation labels: ");
+            // Replacement may only run from the explicit approval in Chat.
+            if (replace && requestedMeters is null) return;
+            SpotGrid? previous = null;
+            if (replace)
+            {
+                var selection = editor.SelectImplied();
+                previous = selection.Status == PromptStatus.OK
+                    ? ReadSelectedSpotGrid(selection.Value.GetObjectIds(), database)
+                    : spotGrids.GetValueOrDefault(document)
+                        ?? throw new InvalidOperationException("No tracked grid in this drawing. Select the existing spot elevation labels and retry.");
+            }
+
+            var surfaceId = previous?.SurfaceId ??
+                PickTin(editor, database, "\nSelect the TIN for spot elevation labels: ");
             if (surfaceId.IsNull) return;
 
             var spacing = ResolveTaskDistance(editor, database, requestedMeters, 1d, "Grid spacing");
@@ -66,30 +92,65 @@ public sealed partial class Plugin
 
             if (points.Count == 0)
                 throw new InvalidOperationException("No grid intersections fall on this surface. Try a smaller spacing.");
-            editor.WriteMessage($"\nPreview: {points.Count} native spot elevation labels on '{name}', spaced {spacing:G} drawing units in WCS X and Y.");
-            var confirmation = new PromptKeywordOptions("\nPlace these labels?") { AllowNone = true };
-            confirmation.Keywords.Add("Place");
-            confirmation.Keywords.Add("Cancel");
-            confirmation.Keywords.Default = "Cancel";
-            var answer = editor.GetKeywords(confirmation);
-            if (answer.Status != PromptStatus.OK || answer.StringResult != "Place") return;
+            if (!replace)
+            {
+                editor.WriteMessage($"\nPreview: {points.Count} native spot elevation labels on '{name}', spaced {spacing:G} drawing units in WCS X and Y.");
+                var confirmation = new PromptKeywordOptions("\nPlace these labels?") { AllowNone = true };
+                confirmation.Keywords.Add("Place");
+                confirmation.Keywords.Add("Cancel");
+                confirmation.Keywords.Default = "Cancel";
+                var answer = editor.GetKeywords(confirmation);
+                if (answer.Status != PromptStatus.OK || answer.StringResult != "Place") return;
+            }
 
+            ObjectId[] newLabels;
             using (var transaction = database.TransactionManager.StartTransaction())
             {
-                foreach (var point in points) SurfaceElevationLabel.Create(surfaceId, point);
+                if (previous is not null)
+                {
+                    foreach (var id in previous.Labels)
+                    {
+                        if (id.IsErased || transaction.GetObject(id, OpenMode.ForWrite) is not SurfaceElevationLabel label ||
+                            label.FeatureId != surfaceId)
+                            throw new InvalidOperationException("The old grid has changed. Select the labels to replace and try again.");
+                        label.Erase();
+                    }
+                }
+                newLabels = points.Select(point => SurfaceElevationLabel.Create(surfaceId, point)).ToArray();
                 transaction.Commit();
             }
 
-            var result = $"Placed {points.Count} spot elevation labels on '{name}'.";
+            spotGrids[document] = new(surfaceId, newLabels);
+            var result = previous is null
+                ? $"Placed {newLabels.Length} spot elevation labels on '{name}'."
+                : $"Replaced {previous.Labels.Length} labels with {newLabels.Length} on '{name}' at {spacing:G} drawing units.";
             panel?.InvalidateDrawing(result);
+            workspace?.ShowTaskResult(result);
             editor.WriteMessage("\n" + result);
         }
         catch (System.Exception ex)
         {
             var message = $"Spot elevations stopped: {ex.Message}";
             panel?.InvalidateDrawing(message);
+            workspace?.ShowTaskResult(message);
             editor.WriteMessage("\n" + message);
         }
+    }
+
+    private static SpotGrid ReadSelectedSpotGrid(ObjectId[] ids, Database database)
+    {
+        var surfaceId = ObjectId.Null;
+        using var read = database.TransactionManager.StartOpenCloseTransaction();
+        foreach (var id in ids)
+        {
+            if (read.GetObject(id, OpenMode.ForRead) is not SurfaceElevationLabel label ||
+                (!surfaceId.IsNull && label.FeatureId != surfaceId))
+                throw new InvalidOperationException("Select only the spot elevation labels to replace, all on one TIN.");
+            surfaceId = label.FeatureId;
+        }
+        if (surfaceId.IsNull || read.GetObject(surfaceId, OpenMode.ForRead) is not TinSurface)
+            throw new InvalidOperationException("The selected spot labels must belong to a TIN surface.");
+        return new(surfaceId, ids);
     }
 
     private static double ResolveTaskDistance(Editor editor, Database database, double? requestedMeters,
