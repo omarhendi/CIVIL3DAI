@@ -1,0 +1,127 @@
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.Runtime;
+using Autodesk.Civil.DatabaseServices;
+using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
+
+namespace CivilAI;
+
+public sealed partial class Plugin
+{
+    [CommandMethod("CIVILAISPOTELEVATIONS", CommandFlags.Modal | CommandFlags.UsePickSet)]
+    public void AddSpotElevations()
+    {
+        var document = Application.DocumentManager.MdiActiveDocument;
+        if (document is null) return;
+        var editor = document.Editor;
+        var database = document.Database;
+
+        try
+        {
+            var surfaceId = PickTin(editor, database, "\nSelect the TIN for spot elevation labels: ");
+            if (surfaceId.IsNull) return;
+
+            var defaultSpacing = database.Insunits switch
+            {
+                UnitsValue.Meters => 1d,
+                UnitsValue.Centimeters => 100d,
+                UnitsValue.Millimeters => 1000d,
+                UnitsValue.Feet => 1 / 0.3048,
+                UnitsValue.Inches => 1 / 0.0254,
+                _ => (double?)null
+            };
+            var spacingPrompt = new PromptDoubleOptions(defaultSpacing is double value
+                ? $"\nGrid spacing in drawing units <{value:G}>: "
+                : "\nGrid spacing in drawing units (enter the equivalent of 1 m): ")
+            {
+                AllowNegative = false, AllowZero = false, AllowNone = defaultSpacing.HasValue,
+                UseDefaultValue = defaultSpacing.HasValue
+            };
+            if (defaultSpacing is double suggested) spacingPrompt.DefaultValue = suggested;
+            var input = editor.GetDouble(spacingPrompt);
+            if (input.Status != PromptStatus.OK && input.Status != PromptStatus.None) return;
+            var spacing = input.Status == PromptStatus.None ? defaultSpacing ?? double.NaN : input.Value;
+            if (!double.IsFinite(spacing) || spacing <= 0) return;
+
+            var points = new List<Point2d>();
+            string name;
+            using (var read = database.TransactionManager.StartOpenCloseTransaction())
+            {
+                var surface = (TinSurface)read.GetObject(surfaceId, OpenMode.ForRead);
+                if (surface.IsReferenceObject &&
+                    (!surface.IsReferenceValid || surface.IsReferenceStale || !surface.IsReferencedSourceExisting))
+                    throw new InvalidOperationException("The reference TIN is missing, invalid, or stale.");
+
+                name = surface.Name;
+                var bounds = surface.GetGeneralProperties();
+                var firstX = Math.Ceiling(bounds.MinimumCoordinateX / spacing);
+                var firstY = Math.Ceiling(bounds.MinimumCoordinateY / spacing);
+                var columns = Math.Floor(bounds.MaximumCoordinateX / spacing) - firstX + 1;
+                var rows = Math.Floor(bounds.MaximumCoordinateY / spacing) - firstY + 1;
+                if (!double.IsFinite(columns * rows) || columns * rows > 100_000 ||
+                    Math.Abs(firstX) + columns >= 9e15 || Math.Abs(firstY) + rows >= 9e15)
+                    throw new InvalidOperationException("The grid is too dense for this surface. Increase the spacing.");
+                for (var row = 0; row < rows; row++)
+                for (var column = 0; column < columns; column++)
+                {
+                    var x = (firstX + column) * spacing;
+                    var y = (firstY + row) * spacing;
+                    try
+                    {
+                        if (!double.IsFinite(surface.FindElevationAtXY(x, y))) continue;
+                    }
+                    catch (Autodesk.Civil.PointNotOnEntityException) { continue; }
+
+                    if (points.Count == 5_000)
+                        throw new InvalidOperationException("This grid would place more than 5,000 labels. Increase the spacing.");
+                    points.Add(new Point2d(x, y));
+                }
+            }
+
+            if (points.Count == 0)
+                throw new InvalidOperationException("No grid intersections fall on this surface. Try a smaller spacing.");
+            editor.WriteMessage($"\nPreview: {points.Count} native spot elevation labels on '{name}', spaced {spacing:G} drawing units in WCS X and Y.");
+            var confirmation = new PromptKeywordOptions("\nPlace these labels?") { AllowNone = true };
+            confirmation.Keywords.Add("Place");
+            confirmation.Keywords.Add("Cancel");
+            confirmation.Keywords.Default = "Cancel";
+            var answer = editor.GetKeywords(confirmation);
+            if (answer.Status != PromptStatus.OK || answer.StringResult != "Place") return;
+
+            using (var transaction = database.TransactionManager.StartTransaction())
+            {
+                foreach (var point in points) SurfaceElevationLabel.Create(surfaceId, point);
+                transaction.Commit();
+            }
+
+            var result = $"Placed {points.Count} spot elevation labels on '{name}'.";
+            panel?.InvalidateDrawing(result);
+            editor.WriteMessage("\n" + result);
+        }
+        catch (System.Exception ex)
+        {
+            var message = $"Spot elevations stopped: {ex.Message}";
+            panel?.InvalidateDrawing(message);
+            editor.WriteMessage("\n" + message);
+        }
+    }
+
+    private static ObjectId PickTin(Editor editor, Database database, string prompt)
+    {
+        var implied = editor.SelectImplied();
+        if (implied.Status == PromptStatus.OK)
+        {
+            using var read = database.TransactionManager.StartOpenCloseTransaction();
+            var surfaces = implied.Value.GetObjectIds()
+                .Where(id => read.GetObject(id, OpenMode.ForRead) is TinSurface).ToArray();
+            if (surfaces.Length == 1) return surfaces[0];
+        }
+
+        var picked = editor.GetEntity(prompt);
+        if (picked.Status != PromptStatus.OK) return ObjectId.Null;
+        using (var read = database.TransactionManager.StartOpenCloseTransaction())
+            if (read.GetObject(picked.ObjectId, OpenMode.ForRead) is TinSurface) return picked.ObjectId;
+        throw new ArgumentException("Select a TIN surface.");
+    }
+}

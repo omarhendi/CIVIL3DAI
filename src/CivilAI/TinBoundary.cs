@@ -20,22 +20,8 @@ public sealed partial class Plugin
         try
         {
             const double midOrdinate = 0.01;
-            var surfaceId = ObjectId.Null;
-            var implied = editor.SelectImplied();
-            if (implied.Status == PromptStatus.OK)
-            {
-                using var read = database.TransactionManager.StartOpenCloseTransaction();
-                var surfaces = implied.Value.GetObjectIds()
-                    .Where(id => read.GetObject(id, OpenMode.ForRead) is TinSurface).ToArray();
-                if (surfaces.Length == 1) surfaceId = surfaces[0];
-            }
-
-            if (surfaceId.IsNull)
-            {
-                var picked = editor.GetEntity("\nSelect the TIN surface to trim: ");
-                if (picked.Status != PromptStatus.OK) return;
-                surfaceId = picked.ObjectId;
-            }
+            var surfaceId = PickTin(editor, database, "\nSelect the TIN surface to trim: ");
+            if (surfaceId.IsNull) return;
 
             string name;
             using (var read = database.TransactionManager.StartOpenCloseTransaction())

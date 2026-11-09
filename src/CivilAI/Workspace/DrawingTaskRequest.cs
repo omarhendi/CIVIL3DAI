@@ -9,7 +9,8 @@ internal enum DrawingTask
     AssessArea,
     CreateTin,
     OffsetLevels,
-    AddTinBoundary
+    AddTinBoundary,
+    SpotElevations
 }
 
 internal static class DrawingTaskRequest
@@ -35,6 +36,7 @@ internal static class DrawingTaskRequest
             "create an offset feature line from reference elevations" or "offset a feature line with reference elevations" or
                 "create a feature line from reference elevations" => DrawingTask.OffsetLevels,
             "add an outer boundary" or "trim the selected surface" => DrawingTask.AddTinBoundary,
+            "add spot elevations" or "label spot elevations" => DrawingTask.SpotElevations,
             _ => null
         };
     }

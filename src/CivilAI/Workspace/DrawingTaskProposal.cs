@@ -13,6 +13,7 @@ internal static class DrawingTaskProposal
         - assess_area: open the pavement or floor slope assessment with Civil 3D selection and limit prompts.
         - create_tin: create a proposed TIN from feature lines, with selection, naming and confirmation in Civil 3D.
         - add_tin_boundary: trim an existing TIN to a closed outer outline. If the user says the surface needs a boundary or has extra triangles outside the intended area, use this action. Civil 3D uses the selected TIN when available, asks for the closed outline and confirms before applying.
+        - spot_elevations: place native spot elevation labels on a TIN in a rectangular grid. Civil 3D uses the selected TIN when available and prompts for spacing (default 1 metre in known drawing units) and confirmation. Use this for requests like “give me spot elevations every 1 meter on this surface”.
         - offset_levels: create an offset feature line with elevations sampled at the original edge, with selection and confirmation in Civil 3D.
         - none: answer a question, clarify ambiguity, or explain that the requested action is unsupported.
         Propose at most one action. For multi-step requests or unsupported extra requirements, use none and explain the limit.
@@ -51,6 +52,7 @@ internal static class DrawingTaskProposal
                 "assess_area" => (DrawingTask.AssessArea, message),
                 "create_tin" => (DrawingTask.CreateTin, message),
                 "add_tin_boundary" => (DrawingTask.AddTinBoundary, message),
+                "spot_elevations" => (DrawingTask.SpotElevations, message),
                 "offset_levels" => (DrawingTask.OffsetLevels, message),
                 "none" => (null, message),
                 _ => null
@@ -66,6 +68,7 @@ internal static class DrawingTaskProposal
         DrawingTask.AssessArea => "Assess area slopes",
         DrawingTask.CreateTin => "Create a proposed TIN",
         DrawingTask.AddTinBoundary => "Add an outer boundary to an existing TIN",
+        DrawingTask.SpotElevations => "Place spot elevation labels on a TIN grid",
         DrawingTask.OffsetLevels => "Create an offset feature line with reference elevations",
         _ => throw new ArgumentOutOfRangeException(nameof(task))
     };

@@ -63,6 +63,7 @@ public sealed partial class Plugin : IExtensionApplication
             DrawingTask.AssessArea => "CIVILAIAREA ",
             DrawingTask.CreateTin => "CIVILAICREATETIN ",
             DrawingTask.AddTinBoundary => "CIVILAIBOUNDARY ",
+            DrawingTask.SpotElevations => "CIVILAISPOTELEVATIONS ",
             DrawingTask.OffsetLevels => "CIVILAIOFFSETLEVELS ",
             _ => throw new ArgumentOutOfRangeException(nameof(task))
         };

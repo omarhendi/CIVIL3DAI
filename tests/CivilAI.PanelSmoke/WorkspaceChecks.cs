@@ -79,6 +79,10 @@ internal static class WorkspaceChecks
             Send("The surface we created needs a boundary because it has triangles we don't need.");
             Check(launched.Count == 2 && launched[^1] == DrawingTask.AddTinBoundary,
                 "Boundary requests open the native workflow for an existing TIN");
+            provider.Response = """{"action":"spot_elevations","message":"I will open the spot elevation grid."}""";
+            Send("Give me spot elevations every 1 meter on this surface.");
+            Check(launched.Count == 3 && launched[^1] == DrawingTask.SpotElevations,
+                "Spot elevation requests open the native label workflow");
             tabs.SelectedIndex = 2;
             Check(store.LoadSettings().SelectedTab == 2 && store.LoadSettings().Provider == "Local", "Tab and provider UI settings persist");
             for (var tab = 0; tab < tabs.Items.Count; tab++)
