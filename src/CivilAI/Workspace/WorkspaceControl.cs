@@ -12,6 +12,8 @@ namespace CivilAI.Workspace;
 
 internal sealed class WorkspaceControl : UserControl, IDisposable
 {
+    private readonly AgentSession agentSession = new();
+    private readonly Func<string, System.Text.Json.JsonElement, CancellationToken, Task<string>>? agentTool;
     private readonly WorkspaceStore store;
     private readonly WorkspaceSettings settings;
     private readonly IAiProvider provider;
@@ -44,8 +46,9 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     private bool busy;
     private bool disposed;
 
-    public WorkspaceControl(InspectorPanel inspector, Func<Task<DrawingSnapshot?>> capture, WorkspaceStore? storage = null, IAiProvider? aiProvider = null, Action<DrawingTask, double?>? launchDrawingTask = null)
+    public WorkspaceControl(InspectorPanel inspector, Func<Task<DrawingSnapshot?>> capture, WorkspaceStore? storage = null, IAiProvider? aiProvider = null, Action<DrawingTask, double?>? launchDrawingTask = null, Func<string, System.Text.Json.JsonElement, CancellationToken, Task<string>>? agentTool = null)
     {
+        this.agentTool = agentTool;
         this.inspector = inspector;
         this.launchDrawingTask = launchDrawingTask;
         provider = aiProvider ?? new JsonAiProvider();
@@ -140,7 +143,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         {
             if (busy) throw new InvalidOperationException("Cancel or finish the current request first.");
             if (MessageBox.Show("Clear this computer's saved conversation?", "New conversation", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-            { replyOptions.Children.Clear(); sessionTurns.Clear(); engine.Messages.Clear(); history.Clear(); store.SaveConversation(engine.Messages); }
+            { replyOptions.Children.Clear(); agentSession.Clear(); sessionTurns.Clear(); engine.Messages.Clear(); history.Clear(); store.SaveConversation(engine.Messages); }
             return Task.CompletedTask;
         }));
         chat.Children.Add(toolbar);
@@ -216,11 +219,19 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         stack.Children.Add(new TextBlock { Text = $"History, agent Markdown and settings are saved in plain text on this computer:\n{store.Root}\n\nSend uses the selected provider with your message and up to four recent exchanges from this session. Drawing snapshots and agent files stay on this computer. Civil 3D asks before creating drawing objects.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(6, 14, 6, 6) });
         tabs.Items.Add(new TabItem { Header = "Providers", Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } });
     }
+    internal void ResetAgentContext()
+    {
+        pending?.Cancel();
+        agentSession.Clear();
+        replyOptions.Children.Clear();
+    }
+
     public void SetSnapshot(DrawingSnapshot? value)
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => SetSnapshot(value)); return; }
         if (value is null)
         {
+
             drawingContext++;
             replyOptions.Children.Clear();
         }
@@ -303,6 +314,12 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
                 await ExecuteDrawingTaskAsync(offlineTask);
             else
                 Log("Choose a model provider for conversation, or try “inspect the drawing” offline.");
+            return;
+        }
+
+        if (agentTool is not null && selectedProvider != "Offline")
+        {
+            await RunAgentAsync(prompt, quickReply is not null, selectedProvider);
             return;
         }
 
@@ -398,6 +415,47 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
                 send.IsEnabled = true;
                 cancel.Visibility = Visibility.Collapsed;
             });
+        }
+    }
+    private async Task RunAgentAsync(string prompt, bool quickReply, string selectedProvider)
+    {
+        busy = true;
+        send.IsEnabled = false;
+        replyOptions.Children.Clear();
+        cancel.Visibility = Visibility.Visible;
+        using var cancellation = new CancellationTokenSource();
+        pending = cancellation;
+        try
+        {
+            var sessionKey = key.Password;
+            if (selectedProvider != "Local" && string.IsNullOrWhiteSpace(sessionKey))
+                throw new InvalidOperationException("Enter the provider key.");
+            Append(new("user", prompt));
+            if (!quickReply) input.Clear();
+            Log("Agent is working. Cancel stops further operations; Escape ends an active drawing prompt.");
+            var response = await agentSession.RunAsync(prompt, provider,
+                new(selectedProvider, model.Text.Trim(), endpoint.Text.Trim()), sessionKey, agentTool!, Append,
+                cancellation.Token);
+            if (response.GetProperty("tool").GetString() == "ask" &&
+                response.GetProperty("arguments").TryGetProperty("options", out var options) &&
+                options.ValueKind == System.Text.Json.JsonValueKind.Array)
+                foreach (var option in options.EnumerateArray().Take(4))
+                {
+                    if (option.ValueKind != System.Text.Json.JsonValueKind.String) continue;
+                    var answer = option.GetString()!;
+                    if (answer.Length is > 0 and <= 120)
+                        replyOptions.Children.Add(ActionButton(answer, () => SendAsync(answer)));
+                }
+            Log(response.GetProperty("tool").GetString() == "ask" ? "Waiting for your answer." : "Agent turn complete.");
+        }
+        catch (OperationCanceledException) { Log("Agent stopped. Completed drawing operations remain available in Undo."); }
+        catch (Exception ex) { Log("Agent stopped: " + ex.GetType().Name + ". Review the last result before continuing."); }
+        finally
+        {
+            pending = null;
+            busy = false;
+            send.IsEnabled = true;
+            cancel.Visibility = Visibility.Collapsed;
         }
     }
     private void Append(ChatMessage message)

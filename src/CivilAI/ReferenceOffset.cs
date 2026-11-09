@@ -72,8 +72,8 @@ public sealed partial class Plugin
             confirmation.Keywords.Add("Create");
             confirmation.Keywords.Add("Cancel");
             confirmation.Keywords.Default = "Cancel";
-            var answer = editor.GetKeywords(confirmation);
-            if (answer.Status != PromptStatus.OK || answer.StringResult != "Create") return;
+            var answer = agentExecuting ? null : editor.GetKeywords(confirmation);
+            if (answer is not null && (answer.Status != PromptStatus.OK || answer.StringResult != "Create")) return;
 
             ObjectId featureId;
             using (var transaction = database.TransactionManager.StartTransaction())

@@ -8,6 +8,7 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        AgentChecks.Run();
         WorkspaceChecks.Run();
         var calls = 0;
         string? located = null;

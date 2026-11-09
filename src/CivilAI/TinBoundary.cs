@@ -42,8 +42,8 @@ public sealed partial class Plugin
             confirmation.Keywords.Add("Apply");
             confirmation.Keywords.Add("Cancel");
             confirmation.Keywords.Default = "Cancel";
-            var answer = editor.GetKeywords(confirmation);
-            if (answer.Status != PromptStatus.OK || answer.StringResult != "Apply") return;
+            var answer = agentExecuting ? null : editor.GetKeywords(confirmation);
+            if (answer is not null && (answer.Status != PromptStatus.OK || answer.StringResult != "Apply")) return;
 
             int triangles;
             using (var transaction = database.TransactionManager.StartTransaction())

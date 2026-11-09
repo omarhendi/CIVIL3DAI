@@ -42,6 +42,7 @@ public sealed partial class Plugin : IExtensionApplication
 
     private static void DrawingChanged(object sender, DocumentCollectionEventArgs args)
     {
+        workspace?.ResetAgentContext();
         pendingDistance = null;
         ClearTriangleLocations();
         lastSnapshot = null;
@@ -98,7 +99,7 @@ public sealed partial class Plugin : IExtensionApplication
             workspace?.SetSnapshot(null);
             await RequestRefreshAsync();
             return lastSnapshot;
-        }, launchDrawingTask: LaunchDrawingTask);
+        }, launchDrawingTask: LaunchDrawingTask, agentTool: ExecuteAgentTool);
         palette = new PaletteSet("Civil AI 0.3", new Guid("B7A3A2CA-10C8-4575-BC7D-CFAE9601D313"))
         {
             Style = PaletteSetStyles.ShowAutoHideButton | PaletteSetStyles.ShowCloseButton | PaletteSetStyles.ShowPropertiesMenu,

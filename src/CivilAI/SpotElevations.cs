@@ -92,7 +92,7 @@ public sealed partial class Plugin
 
             if (points.Count == 0)
                 throw new InvalidOperationException("No grid intersections fall on this surface. Try a smaller spacing.");
-            if (!replace)
+            if (!replace && !agentExecuting)
             {
                 editor.WriteMessage($"\nPreview: {points.Count} native spot elevation labels on '{name}', spaced {spacing:G} drawing units in WCS X and Y.");
                 var confirmation = new PromptKeywordOptions("\nPlace these labels?") { AllowNone = true };
