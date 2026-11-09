@@ -119,7 +119,7 @@ public sealed partial class Plugin
         }
     }
 
-    private static List<TrianglePoint> ReadOffsetEdge(DBObject entity, Transaction read, bool fromSurface,
+    private static List<TrianglePoint> ReadOffsetEdge(Autodesk.AutoCAD.DatabaseServices.DBObject entity, Transaction read, bool fromSurface,
         double offset, out bool closed)
     {
         closed = false;
