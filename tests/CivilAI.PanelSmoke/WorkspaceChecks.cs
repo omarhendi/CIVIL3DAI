@@ -75,6 +75,10 @@ internal static class WorkspaceChecks
             Send("Remove everything.");
             Check(launched.Count == 1, "Unknown model action cannot dispatch");
             Check(!Named<TextBox>("WorkspaceDiagnostics").Text.Contains("test-key"), "Diagnostics contain no key values");
+            provider.Response = """{"action":"add_tin_boundary","message":"Select the outer outline for the surface."}""";
+            Send("The surface we created needs a boundary because it has triangles we don't need.");
+            Check(launched.Count == 2 && launched[^1] == DrawingTask.AddTinBoundary,
+                "Boundary requests open the native workflow for an existing TIN");
             tabs.SelectedIndex = 2;
             Check(store.LoadSettings().SelectedTab == 2 && store.LoadSettings().Provider == "Local", "Tab and provider UI settings persist");
             for (var tab = 0; tab < tabs.Items.Count; tab++)

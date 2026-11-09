@@ -8,7 +8,8 @@ internal enum DrawingTask
     FindSlopes,
     AssessArea,
     CreateTin,
-    OffsetLevels
+    OffsetLevels,
+    AddTinBoundary
 }
 
 internal static class DrawingTaskRequest
@@ -33,6 +34,7 @@ internal static class DrawingTaskRequest
                 "create a surface from feature lines" => DrawingTask.CreateTin,
             "create an offset feature line from reference elevations" or "offset a feature line with reference elevations" or
                 "create a feature line from reference elevations" => DrawingTask.OffsetLevels,
+            "add an outer boundary" or "trim the selected surface" => DrawingTask.AddTinBoundary,
             _ => null
         };
     }

@@ -12,6 +12,7 @@ internal static class DrawingTaskProposal
         - find_slopes: open the triangle slope finder with Civil 3D selection and limit prompts.
         - assess_area: open the pavement or floor slope assessment with Civil 3D selection and limit prompts.
         - create_tin: create a proposed TIN from feature lines, with selection, naming and confirmation in Civil 3D.
+        - add_tin_boundary: trim an existing TIN to a closed outer outline. If the user says the surface needs a boundary or has extra triangles outside the intended area, use this action. Civil 3D uses the selected TIN when available, asks for the closed outline and confirms before applying.
         - offset_levels: create an offset feature line with elevations sampled at the original edge, with selection and confirmation in Civil 3D.
         - none: answer a question, clarify ambiguity, or explain that the requested action is unsupported.
         Propose at most one action. For multi-step requests or unsupported extra requirements, use none and explain the limit.
@@ -49,6 +50,7 @@ internal static class DrawingTaskProposal
                 "find_slopes" => (DrawingTask.FindSlopes, message),
                 "assess_area" => (DrawingTask.AssessArea, message),
                 "create_tin" => (DrawingTask.CreateTin, message),
+                "add_tin_boundary" => (DrawingTask.AddTinBoundary, message),
                 "offset_levels" => (DrawingTask.OffsetLevels, message),
                 "none" => (null, message),
                 _ => null
@@ -63,6 +65,7 @@ internal static class DrawingTaskProposal
         DrawingTask.FindSlopes => "Find steep triangles",
         DrawingTask.AssessArea => "Assess area slopes",
         DrawingTask.CreateTin => "Create a proposed TIN",
+        DrawingTask.AddTinBoundary => "Add an outer boundary to an existing TIN",
         DrawingTask.OffsetLevels => "Create an offset feature line with reference elevations",
         _ => throw new ArgumentOutOfRangeException(nameof(task))
     };
