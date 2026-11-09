@@ -29,7 +29,6 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     private readonly TextBox model = new() { Margin = new Thickness(4) };
     private readonly TextBox endpoint = new() { Margin = new Thickness(4) };
     private readonly PasswordBox key = new() { Margin = new Thickness(4) };
-    private readonly CheckBox includeDrawing = new() { Content = "Include the locally inspected drawing snapshot in the next request", Margin = new Thickness(6) };
     private readonly TextBox markdown = new() { AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, FontFamily = new FontFamily("Consolas"), Margin = new Thickness(6) };
     private readonly TextBox agentName = new() { IsReadOnly = true, Margin = new Thickness(6) };
     private readonly Button send;
@@ -39,7 +38,9 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     private readonly Grid chat = new();
     private readonly InspectorPanel inspector;
     private readonly Action<DrawingTask>? launchDrawingTask;
-    private DrawingSnapshot? snapshot;
+    private readonly Button runProposal;
+    private DrawingTask? proposedTask;
+    private long drawingContext;
     private AgentProfile? editing;
     private CancellationTokenSource? pending;
     private bool busy;
@@ -62,7 +63,6 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         model.Name = "ProviderModel";
         endpoint.Name = "LocalEndpoint";
         key.Name = "SessionApiKey";
-        includeDrawing.Name = "IncludeDrawingSnapshot";
         markdown.Name = "AgentMarkdown";
         Resources = Theme();
         Background = Brush("#151923");
@@ -71,6 +71,13 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         settings = Load(() => store.LoadSettings(), new WorkspaceSettings(), "Settings");
         FontSize = Math.Clamp(settings.FontSize, 11, 20);
         send = ActionButton("Review & send", SendAsync);
+        runProposal = ActionButton("Run proposed task", async () =>
+        {
+            if (busy || proposedTask is not DrawingTask task) return;
+            ClearProposal();
+            await ExecuteDrawingTaskAsync(task);
+        });
+        runProposal.IsEnabled = false;
         inspect = ActionButton("Inspect drawing locally", InspectAsync);
         cancel = ActionButton("Cancel request", () => { pending?.Cancel(); return Task.CompletedTask; });
         cancel.IsEnabled = false;
@@ -144,7 +151,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         {
             if (busy) throw new InvalidOperationException("Cancel or finish the current request first.");
             if (MessageBox.Show("Clear this computer's saved conversation?", "New conversation", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-            { engine.Messages.Clear(); history.Clear(); store.SaveConversation(engine.Messages); }
+            { ClearProposal(); engine.Messages.Clear(); history.Clear(); store.SaveConversation(engine.Messages); }
             return Task.CompletedTask;
         }));
         chat.Children.Add(toolbar);
@@ -159,9 +166,10 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         var actions = new WrapPanel();
         actions.Children.Add(ActionButton("Run drawing task", RunDrawingTaskAsync));
         actions.Children.Add(send);
+        actions.Children.Add(runProposal);
         actions.Children.Add(cancel);
         DockPanel.SetDock(actions, Dock.Bottom); composer.Children.Add(actions);
-        DockPanel.SetDock(includeDrawing, Dock.Bottom); composer.Children.Add(includeDrawing); composer.Children.Add(input);
+        composer.Children.Add(input);
         Grid.SetRow(composer, 3); chat.Children.Add(composer);
         tabs.Items.Add(new TabItem { Header = "Chat", Content = chat });
     }
@@ -213,17 +221,27 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
             if (!double.TryParse(font.Text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var size) || !double.IsFinite(size) || size < 11 || size > 20) throw new ArgumentException("Text size must be between 11 and 20.");
             FontSize = size; if (SaveSettings()) Log("Non-secret settings saved. No connection test or request was sent."); return Task.CompletedTask;
         }));
-        stack.Children.Add(new TextBlock { Text = $"History, agent Markdown and settings are saved in plain text on this computer:\n{store.Root}\n\nReview & send always previews the exact outbound JSON and destination. Drawing data is excluded unless explicitly included. Responses are text only. No drawing modification tools exist; any future write tool must require separate explicit approval.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(6, 14, 6, 6) });
+        stack.Children.Add(new TextBlock { Text = $"History, agent Markdown and settings are saved in plain text on this computer:\n{store.Root}\n\nReview & send always previews the exact outbound JSON and destination. Only the current message and built-in copilot instructions are sent. Drawing snapshots, prior messages and agent files stay on this computer. You choose whether to run a proposed task, and Civil 3D asks before creating drawing objects.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(6, 14, 6, 6) });
         tabs.Items.Add(new TabItem { Header = "Providers", Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } });
     }
     public void SetSnapshot(DrawingSnapshot? value)
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => SetSnapshot(value)); return; }
-        snapshot = value;
-        if (value is null) includeDrawing.IsChecked = false;
+        if (value is null)
+        {
+            drawingContext++;
+            ClearProposal();
+        }
     }
+    private void ClearProposal()
+    {
+        proposedTask = null;
+        runProposal.IsEnabled = false;
+    }
+
     private async Task RunDrawingTaskAsync()
     {
+        if (busy) return;
         var request = input.Text.Trim();
         var task = DrawingTaskRequest.Parse(request);
         if (task is null)
@@ -232,6 +250,12 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
             return;
         }
 
+        ClearProposal();
+        await ExecuteDrawingTaskAsync(task.Value);
+    }
+
+    private async Task ExecuteDrawingTaskAsync(DrawingTask task)
+    {
         if (task == DrawingTask.Inspect)
         {
             await InspectAsync();
@@ -244,7 +268,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
                 return;
             }
 
-            launchDrawingTask(task.Value);
+            launchDrawingTask(task);
             Log("Follow the prompts in the Civil 3D command line.");
             if (task is DrawingTask.CreateTin or DrawingTask.OffsetLevels) return;
         }
@@ -261,21 +285,19 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         SetSnapshot(result);
         Append(new ChatMessage("local", $"Local inspection: {Path.GetFileName(result.Drawing)}\n{result.Items.Count(i => i.Kind == "TIN surface")} TIN surfaces; {result.Items.Count(i => i.Kind == "Feature line")} feature lines. Details are in Drawing Inspector. This snapshot has not been sent to a provider."));
     }
-    private static bool OfflineMilestone => true;
     private async Task SendAsync()
     {
-        if (OfflineMilestone) { Log("Civil AI 0.3 milestone is offline. Provider requests are disabled."); return; }
         if (busy) return;
-        var agent = agentSelector.SelectedItem as AgentProfile ?? throw new InvalidOperationException("Select an agent.");
         if ((string?)providers.SelectedItem == "Offline") { Log("Offline: compose messages, manage agents and inspect drawings locally. Select a provider to send a message."); return; }
         var prompt = input.Text.Trim();
-        var attach = includeDrawing.IsChecked == true;
-        if (attach && snapshot is null) throw new InvalidOperationException("Inspect the current drawing locally before including its snapshot.");
+        if (string.IsNullOrWhiteSpace(prompt)) throw new ArgumentException("Enter a message.");
+        var requestContext = drawingContext;
         var config = new ProviderConfiguration(providers.SelectedItem as string ?? "Offline", model.Text.Trim(), endpoint.Text.Trim());
-        var request = provider.Prepare(config, engine.Compose(agent, prompt, attach ? snapshot : null));
-        if (Encoding.UTF8.GetByteCount(request.Body) > 1_048_576) throw new InvalidOperationException("Request exceeds 1 MiB. Start a new conversation or omit drawing data.");
+        var request = provider.Prepare(config, new[] { new ChatMessage("system", DrawingTaskProposal.Instructions), new ChatMessage("user", prompt) });
+        if (Encoding.UTF8.GetByteCount(request.Body) > 1_048_576) throw new InvalidOperationException("Request exceeds 1 MiB. Shorten your message.");
         if (config.Provider != "Local" && string.IsNullOrWhiteSpace(key.Password)) throw new InvalidOperationException("Enter a session API key in Providers.");
-        if (!(requestApproval?.Invoke(request, attach) ?? ConfirmRequest(request, attach))) { Log("Send canceled before network access."); return; }
+        if (!(requestApproval?.Invoke(request, false) ?? ConfirmRequest(request, false))) { Log("Send canceled before network access."); return; }
+        ClearProposal();
         busy = true; send.IsEnabled = false; inspect.IsEnabled = false; cancel.IsEnabled = true;
         pending = new CancellationTokenSource();
         var sessionKey = key.Password;
@@ -284,8 +306,27 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
             Append(new ChatMessage("user", prompt)); input.Clear();
             Log($"Sending approved request to {request.Endpoint.Host}. Waiting for response…");
             var reply = await provider.SendAsync(request, sessionKey, pending.Token);
-            if (!disposed) Append(new ChatMessage("assistant", reply));
-            Log("Response received. No tools were executed and no drawing objects were modified.");
+            if (disposed || pending.IsCancellationRequested) return;
+            var proposal = DrawingTaskProposal.Parse(reply);
+            if (proposal is null)
+            {
+                Log("The model returned an unsupported response. No task was proposed. Try rephrasing or use another model.");
+                return;
+            }
+
+            var (action, message) = proposal.Value;
+            if (action is DrawingTask task && requestContext == drawingContext)
+            {
+                proposedTask = task;
+                runProposal.IsEnabled = true;
+                Append(new ChatMessage("assistant", $"Proposed task: {DrawingTaskProposal.Label(task)}\n\n{message}"));
+                Log("Review the proposed task, then choose Run proposed task.");
+            }
+            else
+            {
+                Append(new ChatMessage("assistant", message));
+                Log(action is null ? "Response received." : "Drawing context changed. Send the request again to propose a task for this drawing.");
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -305,7 +346,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     {
         var window = new Window { Title = "Approve this request", Width = 760, Height = 650, WindowStartupLocation = WindowStartupLocation.CenterScreen, Background = Background, Foreground = Foreground, Resources = Resources };
         var root = new DockPanel { Margin = new Thickness(12) };
-        var summary = new TextBlock { Text = $"Destination: {request.Endpoint}\nDrawing snapshot included: {drawingIncluded}\nThe exact JSON below includes agent instructions and conversation history. Review it for project data before approving. Credentials are sent in headers and are not shown. Approval applies to this request only.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 4, 4, 12) };
+        var summary = new TextBlock { Text = $"Destination: {request.Endpoint}\nDrawing snapshot included: {drawingIncluded}\nThe exact JSON below contains the current message and built-in copilot instructions. Review it for project data before approving. Credentials are sent in headers and are not shown. Approval applies to this request only.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 4, 4, 12) };
         DockPanel.SetDock(summary, Dock.Top); root.Children.Add(summary);
         var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
         var approve = new Button { Content = "Approve and send this request" }; approve.Click += (_, _) => window.DialogResult = true;

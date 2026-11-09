@@ -1,6 +1,14 @@
-# Civil AI 0.3 — offline surface intelligence
+# Civil AI 0.3
 
-See [milestone scope and deployment steps](MILESTONE-0.3.md). Provider sending is disabled in this branch. The documentation below describes the preserved v0.2 baseline; its live-provider instructions do not apply to v0.3.
+Civil AI for Civil 3D 2026 can ask a configured language model to interpret a request and propose one of its supported drawing tasks.
+
+1. In **Providers**, choose OpenAI, Anthropic, Google, or a compatible local endpoint. Enter the provider's model ID and any required session API key.
+2. In **Chat**, write a request and select **Review & send**. Review the destination and payload. The provider receives the current message and built-in instructions.
+3. Review the proposed task and choose **Run proposed task**. Follow the Civil 3D prompts to select inputs and confirm object creation.
+
+Try “Carry the road levels onto a line just beyond the curb.” The offset workflow will ask for the reference edge, elevation source, distance and side. Drawing snapshots, agent files and conversation history are stored locally and are excluded from model requests. **Run drawing task** also supports a small set of offline phrases.
+
+For prior milestones see [surface inspection and deployment](MILESTONE-0.3.md). The documentation below describes the preserved v0.2 baseline.
 
 # Civil AI 0.2 — Civil 3D agent workspace
 
@@ -73,4 +81,3 @@ The inspector scans Civil surface IDs and local block records, deduplicates nati
 See `VALIDATION.md` for actual results. Cloud compilation does not establish runtime compatibility. Live provider calls, Windows WPF execution and Civil 3D 0.2 acceptance are distinct checks; do not treat a Linux build as proof of them.
 
 0.2 uses non-streaming text responses and a single saved conversation, without automatic history summarization or autonomous model tool calls. Provider requests are capped at 1 MiB; begin a new conversation if it grows too large. Markdown is edited and sent as plain text, not rendered as HTML. Native file pickers and docking must be verified in Civil 3D. No grading modifications are included.
-

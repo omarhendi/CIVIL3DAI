@@ -21,7 +21,7 @@ internal static class WorkspaceChecks
             (request, drawingIncluded) =>
             {
                 approvals++;
-                Check(drawingIncluded == request.Body.Contains("Test.dwg"), "Approval preview includes drawing only after explicit opt-in");
+                Check(!drawingIncluded && !request.Body.Contains("Test.dwg") && !request.Body.Contains("Explain the drawing"), "Provider preview excludes snapshots and prior prompts");
                 return approveNext;
             }, launched.Add);
         try
@@ -57,16 +57,28 @@ internal static class WorkspaceChecks
             Named<ComboBox>("ProviderSelector").SelectedItem = "Local";
             Check(Named<PasswordBox>("SessionApiKey").Password.Length == 0, "Changing provider clears the previous session key");
             Named<TextBox>("ProviderModel").Text = "test-model";
+            var messageInput = Named<TextBox>("MessageInput");
+            messageInput.Text = "Carry the road levels onto a line just beyond the curb.";
             Click("Review & send");
-            Check(approvals == 0 && provider.Sends == 0, "Offline milestone prevents provider approval");
+            Check(approvals == 1 && provider.Sends == 0, "Declining the request prevents network access");
             approveNext = true;
-            Named<CheckBox>("IncludeDrawingSnapshot").IsChecked = true;
             Click("Review & send");
-            Check(approvals == 0 && provider.Sends == 0, "Offline milestone blocks even opted-in snapshot requests");
-            Check(!Named<ListBox>("ConversationHistory").Items.Cast<ChatMessage>().Any(m => m.Role == "assistant"), "Offline milestone has no provider reply");
-            Check(!Named<TextBox>("WorkspaceDiagnostics").Text.Contains("test-key"), "Diagnostics contain no key values");
+            Check(approvals == 2 && provider.Sends == 1, "Approved request reaches the model adapter");
+            Check(launched.Count == 2 && Button("Run proposed task").IsEnabled, "Model proposes a task without launching it");
+            Click("Run proposed task");
+            Check(launched.Count == 3 && launched[^1] == DrawingTask.OffsetLevels && !Button("Run proposed task").IsEnabled,
+                "Explicit review runs the typed task once");
+
+            messageInput.Text = "Build a finish grade surface.";
+            Click("Review & send");
             workspace.SetSnapshot(null);
-            Check(Named<CheckBox>("IncludeDrawingSnapshot").IsChecked == false, "Drawing switch clears snapshot opt-in");
+            Check(!Button("Run proposed task").IsEnabled, "Drawing switch clears the proposed task");
+
+            provider.Response = """{"action":"erase","message":"Remove everything"}""";
+            messageInput.Text = "Remove everything.";
+            Click("Review & send");
+            Check(!Button("Run proposed task").IsEnabled && launched.Count == 3, "Unknown model action cannot dispatch");
+            Check(!Named<TextBox>("WorkspaceDiagnostics").Text.Contains("test-key"), "Diagnostics contain no key values");
             tabs.SelectedIndex = 2;
             Check(store.LoadSettings().SelectedTab == 2 && store.LoadSettings().Provider == "Local", "Tab and provider UI settings persist");
             for (var tab = 0; tab < tabs.Items.Count; tab++)
@@ -93,8 +105,9 @@ internal static class WorkspaceChecks
     private sealed class ProbeProvider : IAiProvider
     {
         public int Sends;
+        public string Response = """{"action":"offset_levels","message":"I can transfer the road elevations to an offset line."}""";
         public PreparedRequest Prepare(ProviderConfiguration configuration, IReadOnlyList<ChatMessage> messages) =>
             new(new Uri("http://localhost:1234/v1/chat/completions"), System.Text.Json.JsonSerializer.Serialize(messages), "Local");
-        public Task<string> SendAsync(PreparedRequest request, string key, CancellationToken cancellation) { Sends++; return Task.FromResult("response"); }
+        public Task<string> SendAsync(PreparedRequest request, string key, CancellationToken cancellation) { Sends++; return Task.FromResult(Response); }
     }
 }
