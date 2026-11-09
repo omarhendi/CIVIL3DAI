@@ -13,6 +13,7 @@ internal static class WorkspaceChecks
         var snapshot = new DrawingSnapshot("Test.dwg", Array.Empty<DrawingItem>(), 0, 0, Array.Empty<string>());
         var toolCalls = 0;
         var approvals = 0;
+        var launched = new List<DrawingTask>();
         var approveNext = false;
         var provider = new ProbeProvider();
         var workspace = new WorkspaceControl(new InspectorPanel(() => Task.CompletedTask),
@@ -22,7 +23,7 @@ internal static class WorkspaceChecks
                 approvals++;
                 Check(drawingIncluded == request.Body.Contains("Test.dwg"), "Approval preview includes drawing only after explicit opt-in");
                 return approveNext;
-            });
+            }, launched.Add);
         try
         {
             var controls = Descendants(workspace).ToArray();
@@ -39,6 +40,12 @@ internal static class WorkspaceChecks
             Check(selector.Items.Count == 2 && store.LoadAgents().Any(a => a.Name == "Edited UI agent"), "Editing replaces existing Markdown agent");
             Click("Inspect drawing locally");
             Check(toolCalls == 1 && provider.Sends == 0, "Local drawing inspection does not send a provider request");
+            Named<TextBox>("MessageInput").Text = "Please assess pavement slopes.";
+            Click("Run drawing task");
+            Check(launched.SequenceEqual(new[] { DrawingTask.AssessArea }), "Supported wording dispatches a typed drawing task");
+            Named<TextBox>("MessageInput").Text = "assess pavement slopes; ERASE ALL";
+            Click("Run drawing task");
+            Check(launched.Count == 1, "Extra command text does not dispatch a drawing task");
             Named<TextBox>("MessageInput").Text = "Explain the drawing";
             Click("Review & send");
             Check(approvals == 0 && provider.Sends == 0, "Offline mode does not attempt approval or network");

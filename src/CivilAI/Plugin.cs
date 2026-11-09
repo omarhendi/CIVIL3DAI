@@ -51,6 +51,22 @@ public sealed partial class Plugin : IExtensionApplication
         Refresh();
     }
 
+    private static void LaunchDrawingTask(DrawingTask task)
+    {
+        var document = Application.DocumentManager.MdiActiveDocument
+            ?? throw new InvalidOperationException("Open a drawing first.");
+        if (!document.Editor.IsQuiescent)
+            throw new InvalidOperationException("Finish the active Civil 3D command first.");
+
+        var command = task switch
+        {
+            DrawingTask.FindSlopes => "CIVILAIFINDSLOPES ",
+            DrawingTask.AssessArea => "CIVILAIAREA ",
+            _ => throw new ArgumentOutOfRangeException(nameof(task))
+        };
+        document.SendStringToExecute(command, true, false, true);
+    }
+
     private static void EnsurePanel()
     {
         if (palette is not null) return;
@@ -64,7 +80,7 @@ public sealed partial class Plugin : IExtensionApplication
                 workspace?.SetSnapshot(null);
                 await RequestRefreshAsync();
                 return lastSnapshot;
-            });
+            }, launchDrawingTask: LaunchDrawingTask);
         }
         catch (System.Exception ex)
         {

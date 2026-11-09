@@ -38,15 +38,17 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     private readonly TabControl tabs = new() { Margin = new Thickness(6) };
     private readonly Grid chat = new();
     private readonly InspectorPanel inspector;
+    private readonly Action<DrawingTask>? launchDrawingTask;
     private DrawingSnapshot? snapshot;
     private AgentProfile? editing;
     private CancellationTokenSource? pending;
     private bool busy;
     private bool disposed;
 
-    public WorkspaceControl(InspectorPanel inspector, Func<Task<DrawingSnapshot?>> capture, WorkspaceStore? storage = null, IAiProvider? aiProvider = null, Func<PreparedRequest, bool, bool>? approveRequest = null)
+    public WorkspaceControl(InspectorPanel inspector, Func<Task<DrawingSnapshot?>> capture, WorkspaceStore? storage = null, IAiProvider? aiProvider = null, Func<PreparedRequest, bool, bool>? approveRequest = null, Action<DrawingTask>? launchDrawingTask = null)
     {
         this.inspector = inspector;
+        this.launchDrawingTask = launchDrawingTask;
         provider = aiProvider ?? new JsonAiProvider();
         requestApproval = approveRequest;
         store = storage ?? new WorkspaceStore();
@@ -154,7 +156,10 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         var splitter = new GridSplitter { Height = 5, HorizontalAlignment = HorizontalAlignment.Stretch, Background = Brush("#44516A"), ResizeDirection = GridResizeDirection.Rows };
         splitter.DragCompleted += (_, _) => SaveSettings(); Grid.SetRow(splitter, 2); chat.Children.Add(splitter);
         var composer = new DockPanel();
-        var actions = new WrapPanel(); actions.Children.Add(send); actions.Children.Add(cancel);
+        var actions = new WrapPanel();
+        actions.Children.Add(ActionButton("Run drawing task", RunDrawingTaskAsync));
+        actions.Children.Add(send);
+        actions.Children.Add(cancel);
         DockPanel.SetDock(actions, Dock.Bottom); composer.Children.Add(actions);
         DockPanel.SetDock(includeDrawing, Dock.Bottom); composer.Children.Add(includeDrawing); composer.Children.Add(input);
         Grid.SetRow(composer, 3); chat.Children.Add(composer);
@@ -217,6 +222,35 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         snapshot = value;
         if (value is null) includeDrawing.IsChecked = false;
     }
+    private async Task RunDrawingTaskAsync()
+    {
+        var request = input.Text.Trim();
+        var task = DrawingTaskRequest.Parse(request);
+        if (task is null)
+        {
+            Log("Try “inspect the drawing”, “find steep triangles”, or “assess pavement slopes”.");
+            return;
+        }
+
+        if (task == DrawingTask.Inspect)
+        {
+            await InspectAsync();
+        }
+        else
+        {
+            if (launchDrawingTask is null)
+            {
+                Log("This task requires Civil 3D.");
+                return;
+            }
+
+            launchDrawingTask(task.Value);
+            Log("Follow the prompts in the Civil 3D command line. Results appear in Drawing Inspector.");
+        }
+
+        tabs.SelectedIndex = 3;
+    }
+
     private async Task InspectAsync()
     {
         if (busy) throw new InvalidOperationException("Finish or cancel the current request first.");
