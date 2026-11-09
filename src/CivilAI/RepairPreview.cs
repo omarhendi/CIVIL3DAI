@@ -2,6 +2,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using Autodesk.Civil.DatabaseServices;
+using Autodesk.Civil.ApplicationServices;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 namespace CivilAI;
 public sealed partial class Plugin
@@ -13,13 +14,18 @@ public sealed partial class Plugin
   var stage="selection";
   try {
    stage="selecting TIN surface";
-   var o=new PromptEntityOptions("\nSelect TIN surface: "); o.AddAllowedClass(typeof(TinSurface),true); var pick=ed.GetEntity(o); if(pick.Status!=PromptStatus.OK)return;
+   var surfacePrompt=ed.GetString("\nEnter exact TIN surface name (for example EDGE02): "); if(surfacePrompt.Status!=PromptStatus.OK)return;
+   var requestedName=surfacePrompt.StringResult.Trim();
    stage="picking point on TIN";
    var pt=ed.GetPoint("\nPick near the steep triangle to inspect candidate swaps: "); if(pt.Status!=PromptStatus.OK)return;
    var rows=new List<PropertyValue>(); string name;
    stage="opening read-only surface transaction";
    using(doc.LockDocument()) using(var tr=doc.Database.TransactionManager.StartOpenCloseTransaction()) {
-    var s=(TinSurface)tr.GetObject(pick.ObjectId,OpenMode.ForRead); name=s.Name;
+    var civil=CivilDocument.GetCivilDocument(doc.Database);
+    TinSurface? s=null;
+    foreach(ObjectId id in civil.GetSurfaceIds()){var candidate=tr.GetObject(id,OpenMode.ForRead) as TinSurface;if(candidate is not null && string.Equals(candidate.Name,requestedName,StringComparison.OrdinalIgnoreCase)){s=candidate;break;}}
+    if(s is null)throw new ArgumentException($"TIN surface not found: {requestedName}");
+    name=s.Name;
     if(s.IsReferenceObject&&(!s.IsReferenceValid||s.IsReferenceStale||!s.IsReferencedSourceExisting))throw new InvalidOperationException("Surface reference unavailable.");
     stage="locating triangle at picked WCS point";
     var wcs=pt.Value.TransformBy(ed.CurrentUserCoordinateSystem);
@@ -52,3 +58,4 @@ public sealed partial class Plugin
  }
  private static double Slope(Autodesk.AutoCAD.Geometry.Point3d a,Autodesk.AutoCAD.Geometry.Point3d b,Autodesk.AutoCAD.Geometry.Point3d c)=>TriangleSlope.TryCalculate(new(a.X,a.Y,a.Z),new(b.X,b.Y,b.Z),new(c.X,c.Y,c.Z),out var g,out _)?g:double.PositiveInfinity;
 }
+
