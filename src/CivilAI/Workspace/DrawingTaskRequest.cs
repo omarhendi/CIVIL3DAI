@@ -7,7 +7,8 @@ internal enum DrawingTask
     Inspect,
     FindSlopes,
     AssessArea,
-    CreateTin
+    CreateTin,
+    OffsetLevels
 }
 
 internal static class DrawingTaskRequest
@@ -30,6 +31,8 @@ internal static class DrawingTaskRequest
                 "check pavement slopes" => DrawingTask.AssessArea,
             "create a proposed tin from selected feature lines" or "create a proposed surface from these feature lines" or
                 "create a surface from feature lines" => DrawingTask.CreateTin,
+            "create an offset feature line from reference elevations" or "offset a feature line with reference elevations" or
+                "create a feature line from reference elevations" => DrawingTask.OffsetLevels,
             _ => null
         };
     }

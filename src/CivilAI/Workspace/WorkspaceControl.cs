@@ -228,7 +228,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         var task = DrawingTaskRequest.Parse(request);
         if (task is null)
         {
-            Log("Try “inspect the drawing”, “find steep triangles”, or “create a proposed TIN from selected feature lines”.");
+            Log("Try “inspect the drawing”, “find steep triangles”, or “create an offset feature line from reference elevations”.");
             return;
         }
 
@@ -246,7 +246,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
 
             launchDrawingTask(task.Value);
             Log("Follow the prompts in the Civil 3D command line.");
-            if (task == DrawingTask.CreateTin) return;
+            if (task is DrawingTask.CreateTin or DrawingTask.OffsetLevels) return;
         }
 
         tabs.SelectedIndex = 3;

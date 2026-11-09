@@ -67,3 +67,17 @@ var closedPlan=PlanCurve.Read(square.Coordinates,true,_=>0,0.001,out var perimet
 Check(Math.Abs(perimeter-40)<1e-10 && closedPlan.Length==5);
 try { PlanCurve.Read(square.Coordinates,true,_=>double.NaN,0.001,out _); throw new Exception("Expected invalid bulge rejection"); } catch(ArgumentException) {}
 Console.WriteLine("Feature-line plan curve, arc sagitta, winding and closure tests passed.");
+var referenceEdge = new[] { new TrianglePoint(0, 0, 100), new TrianglePoint(5, 0, 101), new TrianglePoint(10, 0, 104) };
+var transferred = ReferenceOffsetGeometry.Offset(referenceEdge, false, 0.15);
+Check(transferred.Select(p => p.Z).SequenceEqual(new[] { 100d, 101d, 104d }));
+Check(transferred.Zip(referenceEdge).All(p => Math.Abs(p.First.Y - 0.15) < 1e-9 && p.First.X == p.Second.X));
+var corner = new[] { new TrianglePoint(0, 0, 100), new TrianglePoint(10, 0, 101), new TrianglePoint(10, 10, 104) };
+var offsetCorner = ReferenceOffsetGeometry.Offset(corner, false, -0.15);
+Check(Math.Abs(offsetCorner[1].X - 10.15) < 1e-9 && Math.Abs(offsetCorner[1].Y + 0.15) < 1e-9 && offsetCorner[1].Z == 101);
+try
+{
+    ReferenceOffsetGeometry.Offset(corner, false, 11);
+    throw new Exception("Expected collapsed offset rejection");
+}
+catch (ArgumentException) { }
+Console.WriteLine("Reference offset preserves elevation breaks, joins corners and rejects reversed segments.");
