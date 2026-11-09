@@ -12,7 +12,9 @@ public sealed partial class Plugin
   var doc=Application.DocumentManager.MdiActiveDocument; if(doc is null)return; var ed=doc.Editor;
   var stage="selection";
   try {
+   stage="selecting TIN surface";
    var o=new PromptEntityOptions("\nSelect TIN surface: "); o.AddAllowedClass(typeof(TinSurface),true); var pick=ed.GetEntity(o); if(pick.Status!=PromptStatus.OK)return;
+   stage="picking point on TIN";
    var pt=ed.GetPoint("\nPick near the steep triangle to inspect candidate swaps: "); if(pt.Status!=PromptStatus.OK)return;
    var rows=new List<PropertyValue>(); string name;
    stage="opening read-only surface transaction";
