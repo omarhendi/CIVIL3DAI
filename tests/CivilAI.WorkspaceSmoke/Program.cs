@@ -82,6 +82,12 @@ try
     transport.Status = HttpStatusCode.Unauthorized;
     try { await provider.SendAsync(prepared, "session-test-key", CancellationToken.None); throw new Exception("Expected HTTP failure"); }
     catch (HttpRequestException ex) { Check(!ex.Message.Contains("server-echoed-secret"), "HTTP errors do not leak response bodies"); }
+    Check(JsonAiProvider.DescribeHttpFailure(new HttpRequestException("secret", null, HttpStatusCode.Unauthorized))
+        .Contains("HTTP 401"), "Authentication failure retains its HTTP status");
+    Check(JsonAiProvider.DescribeHttpFailure(new HttpRequestException("secret", null, HttpStatusCode.PaymentRequired))
+        .Contains("balance"), "Balance failure has actionable guidance");
+    Check(!JsonAiProvider.DescribeHttpFailure(new HttpRequestException("server-echoed-secret"))
+        .Contains("secret"), "Network failures do not expose exception details");
     transport.Status = HttpStatusCode.OK;
     using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
     try { await provider.SendAsync(prepared, "session-test-key", cancellation.Token); throw new Exception("Expected cancellation"); }

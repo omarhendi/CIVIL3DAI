@@ -450,6 +450,12 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
             Log(response.GetProperty("tool").GetString() == "ask" ? "Waiting for your answer." : "Agent turn complete.");
         }
         catch (OperationCanceledException) { Log("Agent stopped. Completed drawing operations remain available in Undo."); }
+        catch (System.Net.Http.HttpRequestException ex)
+        {
+            var message = selectedProvider + " request failed. " + JsonAiProvider.DescribeHttpFailure(ex);
+            Append(new ChatMessage("local", message));
+            Log(message);
+        }
         catch (Exception ex) { Log("Agent stopped: " + ex.GetType().Name + ". Review the last result before continuing."); }
         finally
         {

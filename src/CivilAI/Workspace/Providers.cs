@@ -120,6 +120,23 @@ public sealed class JsonAiProvider : IAiProvider, IDisposable
         };
         return string.IsNullOrWhiteSpace(result) ? throw new InvalidOperationException("Provider returned no text. Tool calls, code execution and drawing modifications are not supported.") : result;
     }
+    internal static string DescribeHttpFailure(HttpRequestException error)
+    {
+        var advice = (int?)error.StatusCode switch
+        {
+            400 or 422 => "The provider rejected the request format or parameters. Check the model identifier.",
+            401 => "Authentication failed. Enter an API key from the selected provider in Providers.",
+            402 => "The provider reports insufficient API balance. Check the account associated with this key.",
+            403 => "Access was denied. Check account permissions and regional availability.",
+            404 => "The requested endpoint or model was not found. Check the model identifier.",
+            429 => "The provider's rate or usage limit was reached. Wait before retrying.",
+            >= 500 => "The provider service failed or is overloaded. Try again after a short wait.",
+            null => "The server could not be reached. Check the internet connection, proxy, or firewall.",
+            _ => "The provider rejected the request. Check its service status and account settings."
+        };
+        return (error.StatusCode is { } status ? $"HTTP {(int)status}. " : "Network failure. ") + advice;
+    }
+
     public void Dispose() => client.Dispose();
 }
 
