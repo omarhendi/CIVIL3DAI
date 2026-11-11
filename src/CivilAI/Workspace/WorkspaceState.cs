@@ -26,7 +26,7 @@ public sealed class WorkspaceStore
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     public WorkspaceStore(string? root = null)
     {
-        Root = root ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CivilAI", "0.2");
+        Root = root ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CivilAI", "0.3");
         Directory.CreateDirectory(Path.Combine(Root, "Agents"));
     }
     public WorkspaceSettings LoadSettings() => File.Exists(Path.Combine(Root, "settings.json"))
@@ -79,3 +79,4 @@ public sealed class ReadOnlyToolRegistry
     public Task<DrawingSnapshot?> ExecuteAsync(string name) => name == "drawing.inspect" ? inspect()
         : throw new InvalidOperationException("Unknown tool. Only the registered read-only drawing.inspect tool is permitted. Drawing modifications are unavailable and would require explicit user approval.");
 }
+

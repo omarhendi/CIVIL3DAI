@@ -12,10 +12,11 @@ namespace CivilAI.Workspace;
 
 internal sealed class WorkspaceControl : UserControl, IDisposable
 {
+    private readonly AgentSession agentSession = new();
+    private readonly Func<string, System.Text.Json.JsonElement, CancellationToken, Task<string>>? agentTool;
     private readonly WorkspaceStore store;
     private readonly WorkspaceSettings settings;
     private readonly IAiProvider provider;
-    private readonly Func<PreparedRequest, bool, bool>? requestApproval;
     private readonly ConversationEngine engine = new();
     private readonly ReadOnlyToolRegistry tools;
     private readonly ObservableCollection<AgentProfile> agents = new();
@@ -25,30 +26,32 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     private readonly TextBox input = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MinHeight = 65, Margin = new Thickness(4) };
     private readonly TextBlock state = new() { Text = "Offline · No network request has been made.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(6) };
     private readonly TextBox log = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(6) };
-    private readonly ComboBox providers = new() { ItemsSource = new[] { "Offline", "OpenAI", "Anthropic", "Google", "Local" }, Margin = new Thickness(4) };
+    private readonly ComboBox providers = new() { ItemsSource = new[] { "Offline", "OpenAI", "Anthropic", "Google", "Groq", "DeepSeek", "Local" }, Margin = new Thickness(4) };
     private readonly TextBox model = new() { Margin = new Thickness(4) };
     private readonly TextBox endpoint = new() { Margin = new Thickness(4) };
     private readonly PasswordBox key = new() { Margin = new Thickness(4) };
-    private readonly CheckBox includeDrawing = new() { Content = "Include the locally inspected drawing snapshot in the next request", Margin = new Thickness(6) };
     private readonly TextBox markdown = new() { AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, FontFamily = new FontFamily("Consolas"), Margin = new Thickness(6) };
     private readonly TextBox agentName = new() { IsReadOnly = true, Margin = new Thickness(6) };
     private readonly Button send;
-    private readonly Button inspect;
     private readonly Button cancel;
     private readonly TabControl tabs = new() { Margin = new Thickness(6) };
     private readonly Grid chat = new();
     private readonly InspectorPanel inspector;
-    private DrawingSnapshot? snapshot;
+    private readonly Action<DrawingTask, double?>? launchDrawingTask;
+    private readonly WrapPanel replyOptions = new();
+    private readonly List<ChatMessage> sessionTurns = new();
+    private long drawingContext;
     private AgentProfile? editing;
     private CancellationTokenSource? pending;
     private bool busy;
     private bool disposed;
 
-    public WorkspaceControl(InspectorPanel inspector, Func<Task<DrawingSnapshot?>> capture, WorkspaceStore? storage = null, IAiProvider? aiProvider = null, Func<PreparedRequest, bool, bool>? approveRequest = null)
+    public WorkspaceControl(InspectorPanel inspector, Func<Task<DrawingSnapshot?>> capture, WorkspaceStore? storage = null, IAiProvider? aiProvider = null, Action<DrawingTask, double?>? launchDrawingTask = null, Func<string, System.Text.Json.JsonElement, CancellationToken, Task<string>>? agentTool = null)
     {
+        this.agentTool = agentTool;
         this.inspector = inspector;
+        this.launchDrawingTask = launchDrawingTask;
         provider = aiProvider ?? new JsonAiProvider();
-        requestApproval = approveRequest;
         store = storage ?? new WorkspaceStore();
         tools = new ReadOnlyToolRegistry(capture);
         agentSelector.Name = "AgentSelector";
@@ -60,7 +63,6 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         model.Name = "ProviderModel";
         endpoint.Name = "LocalEndpoint";
         key.Name = "SessionApiKey";
-        includeDrawing.Name = "IncludeDrawingSnapshot";
         markdown.Name = "AgentMarkdown";
         Resources = DarkTheme.Create();
         Background = Brush("#151923");
@@ -68,20 +70,17 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         FontFamily = new FontFamily("Segoe UI");
         settings = Load(() => store.LoadSettings(), new WorkspaceSettings(), "Settings");
         FontSize = Math.Clamp(settings.FontSize, 11, 20);
-        send = ActionButton("Review & send", SendAsync);
-        inspect = ActionButton("Inspect drawing locally", InspectAsync);
+        send = ActionButton("Send", () => SendAsync());
         cancel = ActionButton("Cancel request", () => { pending?.Cancel(); return Task.CompletedTask; });
-        cancel.IsEnabled = false;
+        cancel.Visibility = Visibility.Collapsed;
         var root = new DockPanel();
         var header = new StackPanel { Margin = new Thickness(10, 8, 10, 0) };
-        header.Children.Add(new TextBlock { Text = "CIVIL AI  /  0.2", FontSize = 21, FontWeight = FontWeights.SemiBold, Foreground = Brush("#70D8D0") });
-        header.Children.Add(new TextBlock { Text = "Agent workspace · Read-only drawing tools", Margin = new Thickness(0, 3, 0, 6) });
+        header.Children.Add(new TextBlock { Text = "CIVIL AI  /  0.3", FontSize = 21, FontWeight = FontWeights.SemiBold, Foreground = Brush("#70D8D0") });
+        header.Children.Add(new TextBlock { Text = "Agent workspace · Drawing tasks", Margin = new Thickness(0, 3, 0, 6) });
         DockPanel.SetDock(header, Dock.Top); root.Children.Add(header);
         DockPanel.SetDock(state, Dock.Bottom); root.Children.Add(state);
         root.Children.Add(tabs); Content = root;
         BuildChat(); BuildAgents(); BuildSettings();
-        inspector.Background = Brush("#151923"); inspector.Foreground = Foreground;
-        tabs.Items.Add(new TabItem { Header = "Drawing Inspector", Content = inspector });
         tabs.Items.Add(new TabItem { Header = "Diagnostics", Content = log });
         foreach (var agent in Load(() => store.LoadAgents(), Array.Empty<AgentProfile>() as IReadOnlyList<AgentProfile>, "Agents")) agents.Add(agent);
         if (agents.Count == 0)
@@ -95,10 +94,12 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         foreach (var message in Load(() => store.LoadConversation(), new List<ChatMessage>(), "Conversation"))
             if (message.Role is "user" or "assistant" or "local") { engine.Messages.Add(message); history.Add(message); }
         transcript.ItemsSource = history;
-        tabs.SelectedIndex = Math.Clamp(settings.SelectedTab, 0, tabs.Items.Count - 1);
+        tabs.SelectedIndex = 0;
         tabs.SelectionChanged += (_, e) => { if (e.Source == tabs) SaveSettings(); };
         agentSelector.SelectionChanged += (_, _) => SaveSettings();
-        Log("Workspace ready. Markdown is never executed. No write tools or background network requests exist.");
+        inspector.ReportReady += ShowDrawingReport;
+        inspector.Notice += Log;
+        Log("Workspace ready. Select a provider to chat, or use offline drawing tasks.");
     }
 
     private T Load<T>(Func<T> read, T fallback, string label)
@@ -120,12 +121,12 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         chat.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 145 });
         var toolbar = new WrapPanel();
         toolbar.Children.Add(new TextBlock { Text = "Agent", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6) });
-        toolbar.Children.Add(agentSelector); toolbar.Children.Add(inspect);
+        toolbar.Children.Add(agentSelector);
         toolbar.Children.Add(ActionButton("New conversation", () =>
         {
             if (busy) throw new InvalidOperationException("Cancel or finish the current request first.");
             if (MessageBox.Show("Clear this computer's saved conversation?", "New conversation", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-            { engine.Messages.Clear(); history.Clear(); store.SaveConversation(engine.Messages); }
+            { replyOptions.Children.Clear(); agentSession.Clear(); sessionTurns.Clear(); engine.Messages.Clear(); history.Clear(); store.SaveConversation(engine.Messages); }
             return Task.CompletedTask;
         }));
         chat.Children.Add(toolbar);
@@ -137,9 +138,12 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         var splitter = new GridSplitter { Height = 5, HorizontalAlignment = HorizontalAlignment.Stretch, Background = Brush("#44516A"), ResizeDirection = GridResizeDirection.Rows };
         splitter.DragCompleted += (_, _) => SaveSettings(); Grid.SetRow(splitter, 2); chat.Children.Add(splitter);
         var composer = new DockPanel();
-        var actions = new WrapPanel(); actions.Children.Add(send); actions.Children.Add(cancel);
+        var actions = new WrapPanel();
+        actions.Children.Add(send);
+        actions.Children.Add(cancel);
         DockPanel.SetDock(actions, Dock.Bottom); composer.Children.Add(actions);
-        DockPanel.SetDock(includeDrawing, Dock.Bottom); composer.Children.Add(includeDrawing); composer.Children.Add(input);
+        DockPanel.SetDock(replyOptions, Dock.Top); composer.Children.Add(replyOptions);
+        composer.Children.Add(input);
         Grid.SetRow(composer, 3); chat.Children.Add(composer);
         tabs.Items.Add(new TabItem { Header = "Chat", Content = chat });
     }
@@ -178,11 +182,16 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     {
         var stack = new StackPanel { Margin = new Thickness(10) };
         void Field(string label, UIElement control) { stack.Children.Add(new TextBlock { Text = label, Margin = new Thickness(4, 8, 4, 0), TextWrapping = TextWrapping.Wrap }); stack.Children.Add(control); }
-        providers.SelectedItem = new[] { "Offline", "OpenAI", "Anthropic", "Google", "Local" }.Contains(settings.Provider) ? settings.Provider : "Offline";
-        providers.SelectionChanged += (_, _) => key.Clear();
+        providers.SelectedItem = new[] { "Offline", "OpenAI", "Anthropic", "Google", "Groq", "DeepSeek", "Local" }.Contains(settings.Provider) ? settings.Provider : "Offline";
+        providers.SelectionChanged += (_, _) =>
+        {
+            key.Clear();
+            if ((string?)providers.SelectedItem == "Groq") model.Text = JsonAiProvider.GroqDefaultModel;
+            if ((string?)providers.SelectedItem == "DeepSeek") model.Text = JsonAiProvider.DeepSeekDefaultModel;
+        };
         model.Text = settings.Model; endpoint.Text = settings.LocalEndpoint;
         Field("Provider (Offline by default)", providers); Field("Model identifier (from your provider)", model);
-        Field("Local compatible base URL (include /v1/ if required; HTTPS or loopback HTTP)", endpoint);
+        Field("Base URL for Local provider only (HTTPS or loopback HTTP)", endpoint);
         Field("API key — session only, never saved to disk or logs", key);
         var font = new TextBox { Text = FontSize.ToString(System.Globalization.CultureInfo.InvariantCulture), Margin = new Thickness(4) };
         Field("Text size (11–20)", font);
@@ -191,47 +200,190 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
             if (!double.TryParse(font.Text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var size) || !double.IsFinite(size) || size < 11 || size > 20) throw new ArgumentException("Text size must be between 11 and 20.");
             FontSize = size; if (SaveSettings()) Log("Non-secret settings saved. No connection test or request was sent."); return Task.CompletedTask;
         }));
-        stack.Children.Add(new TextBlock { Text = $"History, agent Markdown and settings are saved in plain text on this computer:\n{store.Root}\n\nReview & send always previews the exact outbound JSON and destination. Drawing data is excluded unless explicitly included. Responses are text only. No drawing modification tools exist; any future write tool must require separate explicit approval.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(6, 14, 6, 6) });
+        stack.Children.Add(new TextBlock { Text = $"History, agent Markdown and settings are saved in plain text on this computer:\n{store.Root}\n\nSend uses the selected provider with your message and up to four recent exchanges from this session. Drawing snapshots and agent files stay on this computer. Civil 3D asks before creating drawing objects.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(6, 14, 6, 6) });
         tabs.Items.Add(new TabItem { Header = "Providers", Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } });
     }
+    internal void ResetAgentContext()
+    {
+        pending?.Cancel();
+        agentSession.Clear();
+        replyOptions.Children.Clear();
+    }
+
     public void SetSnapshot(DrawingSnapshot? value)
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => SetSnapshot(value)); return; }
-        snapshot = value;
-        if (value is null) includeDrawing.IsChecked = false;
+        if (value is null)
+        {
+
+            drawingContext++;
+            replyOptions.Children.Clear();
+        }
     }
+    private async Task ExecuteDrawingTaskAsync(DrawingTask task, double? distanceMeters = null)
+    {
+        if (task == DrawingTask.Inspect)
+        {
+            await InspectAsync();
+        }
+        else
+        {
+            if (launchDrawingTask is null)
+            {
+                Log("This task requires Civil 3D.");
+                return;
+            }
+
+            launchDrawingTask(task, distanceMeters);
+            Log(task == DrawingTask.ReplaceSpotElevations
+                ? "Replacing spot elevations in Civil 3D…"
+                : "Follow the prompts in the Civil 3D command line.");
+        }
+    }
+
+    internal void ShowTaskResult(string message)
+    {
+        Append(new ChatMessage("local", message));
+        Log(message);
+    }
+
     private async Task InspectAsync()
     {
-        if (busy) throw new InvalidOperationException("Finish or cancel the current request first.");
-        Log("Running local read-only drawing.inspect tool. No data will be sent.");
+        Log("Inspecting the active drawing locally.");
         var result = await tools.ExecuteAsync("drawing.inspect");
-        if (result is null) { Log("Inspection returned no snapshot. See Drawing Inspector diagnostics."); return; }
+        if (result is null) { Log("Inspection returned no drawing results. See Diagnostics for details."); return; }
         SetSnapshot(result);
-        Append(new ChatMessage("local", $"Local inspection: {Path.GetFileName(result.Drawing)}\n{result.Items.Count(i => i.Kind == "TIN surface")} TIN surfaces; {result.Items.Count(i => i.Kind == "Feature line")} feature lines. Details are in Drawing Inspector. This snapshot has not been sent to a provider."));
     }
-    private async Task SendAsync()
+    private void ShowDrawingReport(DrawingSnapshot snapshot)
+    {
+        var report = new StringBuilder();
+        var surfaces = snapshot.Items.Where(item => item.Kind == "TIN surface").ToArray();
+        var featureCount = snapshot.Items.Count(item => item.Kind == "Feature line");
+        var findings = snapshot.Items.Where(item => item.Kind is not ("TIN surface" or "Feature line")).ToArray();
+        if (findings.Length == 0)
+        {
+            report.AppendLine($"Drawing inventory: {surfaces.Length} TIN surface(s) and {featureCount} feature line(s).");
+            foreach (var item in surfaces.Take(12)) report.AppendLine($"• {item.Name}");
+            if (surfaces.Length > 12) report.AppendLine($"Plus {surfaces.Length - 12} more surfaces.");
+        }
+        else
+        {
+            foreach (var item in findings.Take(8))
+            {
+                report.AppendLine(item.Label);
+                var rows = item.Properties.Take(12).ToArray();
+                foreach (var row in rows) report.AppendLine($"{row.Name}: {row.Value}");
+                if (item.Properties.Count > rows.Length)
+                    report.AppendLine($"Plus {item.Properties.Count - rows.Length} more rows.");
+                report.AppendLine();
+            }
+
+            if (findings.Length > 8) report.AppendLine($"Plus {findings.Length - 8} more results.");
+        }
+
+        if (snapshot.Unavailable > 0) report.AppendLine($"Unavailable reads: {snapshot.Unavailable}.");
+        Append(new ChatMessage("local", report.ToString().TrimEnd()));
+        Log("Drawing task results are in Chat.");
+    }
+
+    private async Task SendAsync(string? quickReply = null)
     {
         if (busy) return;
-        var agent = agentSelector.SelectedItem as AgentProfile ?? throw new InvalidOperationException("Select an agent.");
-        if ((string?)providers.SelectedItem == "Offline") { Log("Offline: compose messages, manage agents and inspect drawings locally. Select a provider to send a message."); return; }
-        var prompt = input.Text.Trim();
-        var attach = includeDrawing.IsChecked == true;
-        if (attach && snapshot is null) throw new InvalidOperationException("Inspect the current drawing locally before including its snapshot.");
-        var config = new ProviderConfiguration(providers.SelectedItem as string ?? "Offline", model.Text.Trim(), endpoint.Text.Trim());
-        var request = provider.Prepare(config, engine.Compose(agent, prompt, attach ? snapshot : null));
-        if (Encoding.UTF8.GetByteCount(request.Body) > 1_048_576) throw new InvalidOperationException("Request exceeds 1 MiB. Start a new conversation or omit drawing data.");
-        if (config.Provider != "Local" && string.IsNullOrWhiteSpace(key.Password)) throw new InvalidOperationException("Enter a session API key in Providers.");
-        if (!(requestApproval?.Invoke(request, attach) ?? ConfirmRequest(request, attach))) { Log("Send canceled before network access."); return; }
-        busy = true; send.IsEnabled = false; inspect.IsEnabled = false; cancel.IsEnabled = true;
-        pending = new CancellationTokenSource();
+        var prompt = quickReply ?? input.Text.Trim();
+        if (prompt.Length == 0) return;
+        var selectedProvider = providers.SelectedItem as string ?? "Offline";
+        if (selectedProvider == "Offline")
+        {
+            if (DrawingTaskRequest.Parse(prompt) is DrawingTask offlineTask)
+                await ExecuteDrawingTaskAsync(offlineTask);
+            else
+                Log("Choose a model provider for conversation, or try “inspect the drawing” offline.");
+            return;
+        }
+
+        if (agentTool is not null && selectedProvider != "Offline")
+        {
+            await RunAgentAsync(prompt, quickReply is not null, selectedProvider);
+            return;
+        }
+
+        var requestContext = drawingContext;
+        var config = new ProviderConfiguration(selectedProvider, model.Text.Trim(), endpoint.Text.Trim());
+        var messages = new List<ChatMessage> { new("system", DrawingTaskProposal.Instructions) };
+        messages.AddRange(sessionTurns);
+        messages.Add(new ChatMessage("user", prompt));
+        var request = provider.Prepare(config, messages);
+        if (Encoding.UTF8.GetByteCount(request.Body) > 1_048_576)
+            throw new InvalidOperationException("Request exceeds 1 MiB. Start a new conversation or shorten your message.");
         var sessionKey = key.Password;
+        if (config.Provider != "Local" && string.IsNullOrWhiteSpace(sessionKey))
+            throw new InvalidOperationException("Enter a session API key in Providers.");
+
+        replyOptions.Children.Clear();
+        busy = true;
+        send.IsEnabled = false;
+        cancel.Visibility = Visibility.Visible;
+        using var cancellation = new CancellationTokenSource();
+        pending = cancellation;
         try
         {
-            Append(new ChatMessage("user", prompt)); input.Clear();
-            Log($"Sending approved request to {request.Endpoint.Host}. Waiting for response…");
-            var reply = await provider.SendAsync(request, sessionKey, pending.Token);
-            if (!disposed) Append(new ChatMessage("assistant", reply));
-            Log("Response received. No tools were executed and no drawing objects were modified.");
+            Append(new ChatMessage("user", prompt));
+            if (quickReply is null) input.Clear();
+            Log($"Waiting for {config.Provider}…");
+            var reply = await provider.SendAsync(request, sessionKey, cancellation.Token);
+            if (disposed || cancellation.IsCancellationRequested) return;
+            var proposal = DrawingTaskProposal.Parse(reply);
+            if (proposal is null)
+            {
+                Log("The model returned an unsupported response. Try rephrasing or use another model.");
+                return;
+            }
+
+            var (action, message, options, distanceMeters) = proposal;
+            sessionTurns.Add(new ChatMessage("user", prompt));
+            // Keep the proposed action in context so a follow-up can refer to it.
+            var response = action is DrawingTask task ? $"Task: {DrawingTaskProposal.Label(task)}.\n\n{message}" : message;
+            var contextReply = options.Count == 0 ? response : response + "\nChoices: " + string.Join(" | ", options);
+            sessionTurns.Add(new ChatMessage("assistant", contextReply));
+            if (sessionTurns.Count > 8) sessionTurns.RemoveRange(0, sessionTurns.Count - 8);
+            Append(new ChatMessage("assistant", response));
+            if (action is null)
+            {
+                if (requestContext == drawingContext)
+                    foreach (var option in options)
+                        replyOptions.Children.Add(ActionButton(option, () => SendAsync(option)));
+                Log(options.Count == 0 ? "Response received." : "Choose an option or type your answer.");
+                return;
+            }
+
+            if (requestContext != drawingContext)
+            {
+                Log("The drawing changed during the request. Send it again for the active drawing.");
+                return;
+            }
+
+            if (action == DrawingTask.ReplaceSpotElevations)
+            {
+                Append(new ChatMessage("local",
+                    $"Replace the selected spot labels, or the last Civil AI grid if nothing is selected, with a {distanceMeters:G} m grid?"));
+                replyOptions.Children.Add(ActionButton("Replace grid", async () =>
+                {
+                    if (busy || requestContext != drawingContext) return;
+                    replyOptions.Children.Clear();
+                    await ExecuteDrawingTaskAsync(DrawingTask.ReplaceSpotElevations, distanceMeters);
+                }));
+                replyOptions.Children.Add(ActionButton("Cancel", () =>
+                {
+                    replyOptions.Children.Clear();
+                    Log("Grid replacement canceled.");
+                    return Task.CompletedTask;
+                }));
+                Log("Confirm the replacement in Chat.");
+                return;
+            }
+
+            try { await ExecuteDrawingTaskAsync(action.Value, distanceMeters); }
+            catch (Exception ex) { Error("Starting the drawing task", ex); }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -242,23 +394,59 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
         {
             Dispatcher.Invoke(() =>
             {
-                pending?.Dispose(); pending = null; busy = false;
-                send.IsEnabled = true; inspect.IsEnabled = true; cancel.IsEnabled = false;
+                pending = null;
+                busy = false;
+                send.IsEnabled = true;
+                cancel.Visibility = Visibility.Collapsed;
             });
         }
     }
-    private bool ConfirmRequest(PreparedRequest request, bool drawingIncluded)
+    private async Task RunAgentAsync(string prompt, bool quickReply, string selectedProvider)
     {
-        var window = new Window { Title = "Approve this request", Width = 760, Height = 650, WindowStartupLocation = WindowStartupLocation.CenterScreen, Background = Background, Foreground = Foreground, Resources = Resources };
-        var root = new DockPanel { Margin = new Thickness(12) };
-        var summary = new TextBlock { Text = $"Destination: {request.Endpoint}\nDrawing snapshot included: {drawingIncluded}\nThe exact JSON below includes agent instructions and conversation history. Review it for project data before approving. Credentials are sent in headers and are not shown. Approval applies to this request only.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 4, 4, 12) };
-        DockPanel.SetDock(summary, Dock.Top); root.Children.Add(summary);
-        var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
-        var approve = new Button { Content = "Approve and send this request" }; approve.Click += (_, _) => window.DialogResult = true;
-        var reject = new Button { Content = "Cancel", IsCancel = true }; actions.Children.Add(reject); actions.Children.Add(approve);
-        DockPanel.SetDock(actions, Dock.Bottom); root.Children.Add(actions);
-        root.Children.Add(new TextBox { Text = request.Body, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        window.Content = root; return window.ShowDialog() == true;
+        busy = true;
+        send.IsEnabled = false;
+        replyOptions.Children.Clear();
+        cancel.Visibility = Visibility.Visible;
+        using var cancellation = new CancellationTokenSource();
+        pending = cancellation;
+        try
+        {
+            var sessionKey = key.Password;
+            if (selectedProvider != "Local" && string.IsNullOrWhiteSpace(sessionKey))
+                throw new InvalidOperationException("Enter the provider key.");
+            Append(new("user", prompt));
+            if (!quickReply) input.Clear();
+            Log("Agent is working. Cancel stops further operations; Escape ends an active drawing prompt.");
+            var response = await agentSession.RunAsync(prompt, provider,
+                new(selectedProvider, model.Text.Trim(), endpoint.Text.Trim()), sessionKey, agentTool!, Append,
+                cancellation.Token);
+            if (response.GetProperty("tool").GetString() == "ask" &&
+                response.GetProperty("arguments").TryGetProperty("options", out var options) &&
+                options.ValueKind == System.Text.Json.JsonValueKind.Array)
+                foreach (var option in options.EnumerateArray().Take(4))
+                {
+                    if (option.ValueKind != System.Text.Json.JsonValueKind.String) continue;
+                    var answer = option.GetString()!;
+                    if (answer.Length is > 0 and <= 120)
+                        replyOptions.Children.Add(ActionButton(answer, () => SendAsync(answer)));
+                }
+            Log(response.GetProperty("tool").GetString() == "ask" ? "Waiting for your answer." : "Agent turn complete.");
+        }
+        catch (OperationCanceledException) { Log("Agent stopped. Completed drawing operations remain available in Undo."); }
+        catch (System.Net.Http.HttpRequestException ex)
+        {
+            var message = selectedProvider + " request failed. " + JsonAiProvider.DescribeHttpFailure(ex);
+            Append(new ChatMessage("local", message));
+            Log(message);
+        }
+        catch (Exception ex) { Log("Agent stopped: " + ex.GetType().Name + ". Review the last result before continuing."); }
+        finally
+        {
+            pending = null;
+            busy = false;
+            send.IsEnabled = true;
+            cancel.Visibility = Visibility.Collapsed;
+        }
     }
     private void Append(ChatMessage message)
     {
@@ -292,6 +480,8 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     }
     public void Dispose()
     {
+        inspector.ReportReady -= ShowDrawingReport;
+        inspector.Notice -= Log;
         SaveSettings(); disposed = true; pending?.Cancel(); (provider as IDisposable)?.Dispose(); key.Clear();
     }
 }

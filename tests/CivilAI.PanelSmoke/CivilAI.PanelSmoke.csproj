@@ -13,4 +13,4 @@
     <Compile Include="../../src/CivilAI/InspectorPanel.cs" Link="InspectorPanel.cs" />
     <Compile Include="../../src/CivilAI/DrawingSnapshot.cs" Link="DrawingSnapshot.cs" />
   </ItemGroup>
-</Project>
+<ItemGroup><Compile Include="../../src/CivilAI/SurfaceSummary.cs" Link="SurfaceSummary.cs" /></ItemGroup></Project>

@@ -9,25 +9,31 @@ using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace CivilAI;
 
-public sealed class Plugin : IExtensionApplication
+public sealed partial class Plugin : IExtensionApplication
 {
     private static PaletteSet? palette;
     private static InspectorPanel? panel;
     private static WorkspaceControl? workspace;
     private static DrawingSnapshot? lastSnapshot;
+    private static (Document Document, DrawingTask Task, double Meters, long QueuedAt)? pendingDistance;
 
     public void Initialize()
     {
         Application.DocumentManager.DocumentActivated += DrawingChanged;
         Application.DocumentManager.DocumentToBeDestroyed += DrawingChanged;
+        Application.DocumentManager.DocumentToBeDestroyed += ForgetSpotGrid;
     }
 
     public void Terminate()
     {
         Application.DocumentManager.DocumentActivated -= DrawingChanged;
         Application.DocumentManager.DocumentToBeDestroyed -= DrawingChanged;
+        Application.DocumentManager.DocumentToBeDestroyed -= ForgetSpotGrid;
+        spotGrids.Clear();
         workspace?.Dispose();
         workspace = null;
+        pendingDistance = null;
+        ClearTriangleLocations();
         lastSnapshot = null;
         palette?.Dispose();
         palette = null;
@@ -36,9 +42,12 @@ public sealed class Plugin : IExtensionApplication
 
     private static void DrawingChanged(object sender, DocumentCollectionEventArgs args)
     {
+        workspace?.ResetAgentContext();
+        pendingDistance = null;
+        ClearTriangleLocations();
         lastSnapshot = null;
         workspace?.SetSnapshot(null);
-        panel?.InvalidateDrawing("Drawing context changed. Refresh to inspect the active drawing.");
+        panel?.InvalidateDrawing("Drawing context changed.");
     }
 
     [CommandMethod("CIVILAI", CommandFlags.Modal)]
@@ -46,28 +55,52 @@ public sealed class Plugin : IExtensionApplication
     {
         EnsurePanel();
         palette!.Visible = true;
-        Refresh();
+    }
+
+    private static void LaunchDrawingTask(DrawingTask task, double? distanceMeters)
+    {
+        var document = Application.DocumentManager.MdiActiveDocument
+            ?? throw new InvalidOperationException("Open a drawing first.");
+        if (!document.Editor.IsQuiescent)
+            throw new InvalidOperationException("Finish the active Civil 3D command first.");
+
+        var command = task switch
+        {
+            DrawingTask.FindSlopes => "CIVILAIFINDSLOPES ",
+            DrawingTask.AssessArea => "CIVILAIAREA ",
+            DrawingTask.CreateTin => "CIVILAICREATETIN ",
+            DrawingTask.AddTinBoundary => "CIVILAIBOUNDARY ",
+            DrawingTask.SpotElevations => "CIVILAISPOTELEVATIONS ",
+            DrawingTask.ReplaceSpotElevations => "CIVILAIREPLACESPOTS ",
+            DrawingTask.OffsetLevels => "CIVILAIOFFSETLEVELS ",
+            _ => throw new ArgumentOutOfRangeException(nameof(task))
+        };
+        pendingDistance = distanceMeters is double meters ? (document, task, meters, Environment.TickCount64) : null;
+        try { document.SendStringToExecute(command, true, false, true); }
+        catch { pendingDistance = null; throw; }
+    }
+
+    private static double? ConsumeTaskDistance(Document document, DrawingTask task)
+    {
+        var pending = pendingDistance;
+        pendingDistance = null;
+        return pending is { } value && value.Document == document && value.Task == task &&
+            Environment.TickCount64 - value.QueuedAt < 10000 ? value.Meters : null;
     }
 
     private static void EnsurePanel()
     {
         if (palette is not null) return;
-        panel = new InspectorPanel(RequestRefreshAsync);
-        try
+        panel = new InspectorPanel(RequestRefreshAsync, LocateTriangleAsync);
+        workspace = new WorkspaceControl(panel, async () =>
         {
-            workspace = new WorkspaceControl(panel, async () =>
-            {
-                lastSnapshot = null;
-                workspace?.SetSnapshot(null);
-                await RequestRefreshAsync();
-                return lastSnapshot;
-            });
-        }
-        catch (System.Exception ex)
-        {
-            panel.ShowError("Opening agent workspace (drawing inspector remains available)", ex);
-        }
-        palette = new PaletteSet("Civil AI 0.2", new Guid("5D6BA622-E467-4433-BF96-265A286B88E8"))
+            ClearTriangleLocations();
+            lastSnapshot = null;
+            workspace?.SetSnapshot(null);
+            await RequestRefreshAsync();
+            return lastSnapshot;
+        }, launchDrawingTask: LaunchDrawingTask, agentTool: ExecuteAgentTool);
+        palette = new PaletteSet("Civil AI 0.3", new Guid("B7A3A2CA-10C8-4575-BC7D-CFAE9601D313"))
         {
             Style = PaletteSetStyles.ShowAutoHideButton | PaletteSetStyles.ShowCloseButton | PaletteSetStyles.ShowPropertiesMenu,
             MinimumSize = new System.Drawing.Size(440, 600),
@@ -75,7 +108,7 @@ public sealed class Plugin : IExtensionApplication
             KeepFocus = true,
             DockEnabled = DockSides.Left | DockSides.Right
         };
-        palette.AddVisual("Agent workspace", (System.Windows.Media.Visual?)workspace ?? panel);
+        palette.AddVisual("Agent workspace", workspace);
     }
 
     private static bool refreshing;
@@ -123,6 +156,7 @@ public sealed class Plugin : IExtensionApplication
 
     private static void InspectActiveDrawing()
     {
+        ClearTriangleLocations();
         Document? document = null;
         try
         {
@@ -144,7 +178,8 @@ public sealed class Plugin : IExtensionApplication
         }
         catch (System.Exception ex)
         {
-            lastSnapshot = null;
+            ClearTriangleLocations();
+        lastSnapshot = null;
             workspace?.SetSnapshot(null);
             panel!.ShowError("Drawing inspection", ex);
             try { document?.Editor.WriteMessage($"\nCivil AI inspection failed: {ex}\n"); }

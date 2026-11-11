@@ -17,6 +17,8 @@ jobs:
         run: dotnet restore src/CivilAI/CivilAI.csproj --source https://api.nuget.org/v3/index.json
       - name: Build .NET 8 Windows plugin
         run: dotnet build src/CivilAI/CivilAI.csproj --configuration Release --no-restore
+      - name: Validate surface statistics
+        run: dotnet run --project tests/CivilAI.SurfaceSmoke/CivilAI.SurfaceSmoke.csproj --configuration Release
       - name: Validate reference-property guards and failure isolation
         run: dotnet run --project tests/CivilAI.PropertySmoke/CivilAI.PropertySmoke.csproj --configuration Release
       - name: Validate workspace storage, providers and read-only tool policy
@@ -25,16 +27,28 @@ jobs:
         run: dotnet run --project tests/CivilAI.ThemeSmoke/CivilAI.ThemeSmoke.csproj --configuration Release
       - name: Validate WPF workspace, refresh states and bindings
         run: dotnet run --project tests/CivilAI.PanelSmoke/CivilAI.PanelSmoke.csproj --configuration Release
-      - name: Verify output contains no dependency DLLs
+      - name: Verify only plugin and local geometry library are packaged
         shell: pwsh
         run: |
           $output = 'src/CivilAI/bin/Release/net8.0-windows'
           if (!(Test-Path "$output/CivilAI.dll")) { throw 'CivilAI.dll was not produced' }
-          $dependencies = @(Get-ChildItem $output -Recurse -Filter *.dll | Where-Object { $_.Name -ne 'CivilAI.dll' })
+          $dependencies = @(Get-ChildItem $output -Recurse -Filter *.dll | Where-Object { $_.Name -notin @('CivilAI.dll', 'NetTopologySuite.dll') })
           if ($dependencies.Count -gt 0) { throw "Unexpected dependency DLLs: $($dependencies.Name -join ', ')" }
-      - name: Upload CivilAI.dll only
+      - name: Package deployable files together
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item src/CivilAI/bin/Release/net8.0-windows/CivilAI.dll package/
+          Copy-Item src/CivilAI/bin/Release/net8.0-windows/NetTopologySuite.dll package/
+          Copy-Item third-party/NetTopologySuite-LICENSE.md package/
+      - name: Upload plugin and geometry library
         uses: actions/upload-artifact@v4
         with:
-          name: CivilAI-0.2-${{ github.sha }}
-          path: src/CivilAI/bin/Release/net8.0-windows/CivilAI.dll
+          name: CivilAI-0.3-${{ github.sha }}
+          path: package/
           if-no-files-found: error
+
+
+
+
+
