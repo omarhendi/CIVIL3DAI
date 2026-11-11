@@ -18,13 +18,19 @@ public interface IAiProvider
 // Sending is separate so the UI can show the exact request and obtain approval first.
 public sealed class JsonAiProvider : IAiProvider, IDisposable
 {
+    internal const string DeepSeekDefaultModel = "deepseek-flash";
     internal const string GroqDefaultModel = "openai/gpt-oss-20b";
     private readonly HttpClient client;
     public JsonAiProvider() : this(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { }
     public JsonAiProvider(HttpMessageHandler handler) => client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(120) };
     public PreparedRequest Prepare(ProviderConfiguration config, IReadOnlyList<ChatMessage> messages)
     {
-        var model = config.Provider == "Groq" && string.IsNullOrWhiteSpace(config.Model) ? GroqDefaultModel : config.Model;
+        var model = string.IsNullOrWhiteSpace(config.Model) ? config.Provider switch
+        {
+            "Groq" => GroqDefaultModel,
+            "DeepSeek" => DeepSeekDefaultModel,
+            _ => config.Model
+        } : config.Model;
         if (string.IsNullOrWhiteSpace(model)) throw new ArgumentException("Enter the provider's model identifier in Settings.");
         string endpoint;
         object body;
@@ -42,6 +48,17 @@ public sealed class JsonAiProvider : IAiProvider, IDisposable
                     model,
                     messages = messages.Select(m => new { role = m.Role, content = m.Content }),
                     stream = false,
+                    response_format = new { type = "json_object" }
+                };
+                break;
+            case "DeepSeek":
+                endpoint = "https://api.deepseek.com/chat/completions";
+                body = new
+                {
+                    model,
+                    messages = messages.Select(m => new { role = m.Role, content = m.Content }),
+                    stream = false,
+                    thinking = new { type = "disabled" },
                     response_format = new { type = "json_object" }
                 };
                 break;

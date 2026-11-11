@@ -26,7 +26,7 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     private readonly TextBox input = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MinHeight = 65, Margin = new Thickness(4) };
     private readonly TextBlock state = new() { Text = "Offline · No network request has been made.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(6) };
     private readonly TextBox log = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(6) };
-    private readonly ComboBox providers = new() { ItemsSource = new[] { "Offline", "OpenAI", "Anthropic", "Google", "Groq", "Local" }, Margin = new Thickness(4) };
+    private readonly ComboBox providers = new() { ItemsSource = new[] { "Offline", "OpenAI", "Anthropic", "Google", "Groq", "DeepSeek", "Local" }, Margin = new Thickness(4) };
     private readonly TextBox model = new() { Margin = new Thickness(4) };
     private readonly TextBox endpoint = new() { Margin = new Thickness(4) };
     private readonly PasswordBox key = new() { Margin = new Thickness(4) };
@@ -199,11 +199,12 @@ internal sealed class WorkspaceControl : UserControl, IDisposable
     {
         var stack = new StackPanel { Margin = new Thickness(10) };
         void Field(string label, UIElement control) { stack.Children.Add(new TextBlock { Text = label, Margin = new Thickness(4, 8, 4, 0), TextWrapping = TextWrapping.Wrap }); stack.Children.Add(control); }
-        providers.SelectedItem = new[] { "Offline", "OpenAI", "Anthropic", "Google", "Groq", "Local" }.Contains(settings.Provider) ? settings.Provider : "Offline";
+        providers.SelectedItem = new[] { "Offline", "OpenAI", "Anthropic", "Google", "Groq", "DeepSeek", "Local" }.Contains(settings.Provider) ? settings.Provider : "Offline";
         providers.SelectionChanged += (_, _) =>
         {
             key.Clear();
             if ((string?)providers.SelectedItem == "Groq") model.Text = JsonAiProvider.GroqDefaultModel;
+            if ((string?)providers.SelectedItem == "DeepSeek") model.Text = JsonAiProvider.DeepSeekDefaultModel;
         };
         model.Text = settings.Model; endpoint.Text = settings.LocalEndpoint;
         Field("Provider (Offline by default)", providers); Field("Model identifier (from your provider)", model);

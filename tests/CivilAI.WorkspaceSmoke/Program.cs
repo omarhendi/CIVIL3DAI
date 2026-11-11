@@ -45,7 +45,7 @@ try
     Reject(() => engine.Compose(agent, " ", null), "Blank prompt blocked");
     var transport = new FakeTransport();
     using var provider = new JsonAiProvider(transport);
-    var expected = new Dictionary<string, string> { ["OpenAI"] = "api.openai.com", ["Anthropic"] = "api.anthropic.com", ["Google"] = "generativelanguage.googleapis.com", ["Groq"] = "api.groq.com", ["Local"] = "localhost" };
+    var expected = new Dictionary<string, string> { ["OpenAI"] = "api.openai.com", ["Anthropic"] = "api.anthropic.com", ["Google"] = "generativelanguage.googleapis.com", ["Groq"] = "api.groq.com", ["DeepSeek"] = "api.deepseek.com", ["Local"] = "localhost" };
     foreach (var entry in expected)
     {
         var sendsBeforePreparation = transport.Calls;
@@ -68,6 +68,13 @@ try
             groqBody.RootElement.GetProperty("response_format").GetProperty("type").GetString() == "json_object",
             "Groq uses its fixed endpoint, default model and JSON mode");
     }
+    var deepseek = provider.Prepare(new("DeepSeek", "", ""), withoutDrawing);
+    using (var body = System.Text.Json.JsonDocument.Parse(deepseek.Body))
+        Check(deepseek.Endpoint.AbsoluteUri == "https://api.deepseek.com/chat/completions" &&
+            body.RootElement.GetProperty("model").GetString() == JsonAiProvider.DeepSeekDefaultModel &&
+            body.RootElement.GetProperty("response_format").GetProperty("type").GetString() == "json_object" &&
+            body.RootElement.GetProperty("thinking").GetProperty("type").GetString() == "disabled",
+            "DeepSeek default model and agent JSON configuration");
     var prepared = provider.Prepare(new("OpenAI", "test", ""), withoutDrawing);
     var before = transport.Calls;
     try { await provider.SendAsync(prepared, "", CancellationToken.None); throw new Exception("Expected missing key error"); }
